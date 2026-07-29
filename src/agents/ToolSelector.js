@@ -1,4 +1,6 @@
 import { retry } from "../utils/retry.js";
+import { MODEL } from "../config/constants.js";
+
 export default class ToolSelector {
 
   constructor(ai) {

@@ -3,32 +3,42 @@ import Conversation from "../models/Conversation.js";
 export default class MemoryManager {
 
     async getConversation(userId) {
-
-        const conversation = await Conversation.findOne({ userId });
-
-        return conversation ? conversation.messages : [];
+        try {
+            const conversation = await Conversation.findOne({ userId });
+            return conversation ? conversation.messages : [];
+        } catch (error) {
+            console.warn("Memory read failed:", error.message);
+            return [];
+        }
     }
 
     async addMessage(userId, role, text) {
+        try {
+            let conversation = await Conversation.findOne({ userId });
 
-        let conversation = await Conversation.findOne({ userId });
+            if (!conversation) {
+                conversation = new Conversation({
+                    userId,
+                    messages: []
+                });
+            }
 
-        if (!conversation) {
-            conversation = new Conversation({
-                userId,
-                messages: []
+            conversation.messages.push({
+                role,
+                text
             });
+
+            await conversation.save();
+        } catch (error) {
+            console.warn("Memory write failed:", error.message);
         }
-
-        conversation.messages.push({
-            role,
-            text
-        });
-
-        await conversation.save();
     }
 
     async clearConversation(userId) {
-        await Conversation.deleteOne({ userId });
+        try {
+            await Conversation.deleteOne({ userId });
+        } catch (error) {
+            console.warn("Memory clear failed:", error.message);
+        }
     }
 }

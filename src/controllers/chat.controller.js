@@ -1,11 +1,11 @@
-import Agent from "../agents/Agent.js";
 import ai from "../services/openai.service.js";
+import Agent from "../agents/Agent.js";
 
 const agent = new Agent(ai);
 
 export const chat = async (req, res) => {
-
     try {
+        await agent.init();
 
         const { userId, message } = req.body;
 

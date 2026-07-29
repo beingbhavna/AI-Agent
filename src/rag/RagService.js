@@ -1,15 +1,29 @@
-class RagService {
+import ai from "../services/openai.service.js";
+import EmbeddingService from "../embeddings/EmbeddingService.js";
+import ChromaService from "../vectorstore/ChromaService.js";
+export default class RagService {
 
-    async search(question){
+    constructor(ai) {
+        this.embedder = new EmbeddingService(ai);
+        this.chroma = new ChromaService();
+        this.vector = new ChromaService();
+    }
 
-        const embedding =
-            await embedder.create(question);
+    async init() {
+        await this.chroma.init();
+    }
 
-        const result =
-            await chroma.search(embedding);
+    async search(question) {
 
-        return result.documents[0];
+        const embedding = await this.embedder.create(question);
 
+        const result = await this.chroma.search(embedding, 5);
+
+        if (!result.documents || result.documents.length === 0) {
+            return "";
+        }
+
+        return result.documents[0].join("\n\n");
     }
 
 }

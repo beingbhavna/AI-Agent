@@ -1,3 +1,4 @@
+import ai from "../services/openai.service.js";
 import express from "express";
 import multer from "multer";
 import PdfLoader from "../rag/PdfLoader.js";
@@ -34,7 +35,11 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
         // Split into chunks
         const chunks = splitter.split(text);
         for (const chunk of chunks) {
-            const embedding = await embedder.create(chunk);
+            const response = await ai.models.embedContent({
+                model: "gemini-embedding-001",
+                contents: chunk
+            });
+            const embedding = response.embeddings[0].values;
             await chroma.addDocument(
                 randomUUID(),
                 embedding,
