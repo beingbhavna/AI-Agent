@@ -31,13 +31,15 @@ export default class Agent {
             // ===========================
 
             await this.memory.addMessage(userId, "user", message);
-            const context = await this.rag.search(message);
             // ===========================
             // Get Conversation History
             // ===========================
 
             const history = await this.memory.getConversation(userId);
-
+            const rag = await this.rag.search(message);
+            const context = rag.context;
+            const sources = rag.sources;
+            console.log("RAG Context:", context);
             // ===========================
             // Available Tools
             // ===========================
@@ -108,7 +110,13 @@ Respond naturally to the user.
                 );
 
                 answer = response.text;
+                if (sources && sources.length > 0) {
+                    answer += "\n\n📚 Sources:\n";
+                    sources.forEach(source => {
+                        answer += `• ${source.fileName} (Chunk ${source.chunk})\n`;
+                    });
 
+                }
             }
 
             // ======================================================
@@ -116,19 +124,18 @@ Respond naturally to the user.
             // ======================================================
 
             else {
-
-                let prompt =
-                    this.promptManager.getSystemPrompt();
-
-                prompt += `Knowledge Base:${context} Conversation:`;
-
+                // let prompt = this.promptManager.getSystemPrompt();
+                // prompt += `Knowledge Base:${context} Conversation:`;
+                // history.forEach(chat => {
+                //     prompt += `${chat.role}: ${chat.text}\n`;
+                // });
+                // prompt += `\nuser: ${message}\nassistant:`;
+                let prompt = `You are BhavnaAI, an intelligent AI assistant.Use ONLY the information provided in the context.If the answer is not present in the context, say:"I couldn't find this information in the uploaded documents."
+                Context:${context}Conversation:`;
                 history.forEach(chat => {
-
                     prompt += `${chat.role}: ${chat.text}\n`;
-
                 });
-
-                prompt += `user: ${message}assistant:`;
+                prompt += `User:${message}Assistant:`;
 
                 const response = await retry(() =>
                     this.ai.models.generateContent({
@@ -145,22 +152,11 @@ Respond naturally to the user.
             // Save Assistant Response
             // ===========================
 
-            await this.memory.addMessage(
-                userId,
-                "assistant",
-                answer
-            );
-
+            await this.memory.addMessage(userId, "assistant", answer);
             return answer;
-
         } catch (error) {
-
             console.log("Agent Error:", error.message);
-
             return "Sorry, I'm unable to process your request right now. Please try again in a moment.";
-
         }
-
     }
-
 }

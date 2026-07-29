@@ -35,14 +35,13 @@ export default class ChromaService {
 
     }
 
-    async addDocument(id, embedding, text) {
-
+    async addDocument(id, embedding, text, metadata) {
         await this.init();
-
         await this.collection.add({
             ids: [id],
             embeddings: [embedding],
-            documents: [text]
+            documents: [text],
+            metadatas: [metadata]
         });
 
     }
@@ -53,7 +52,8 @@ export default class ChromaService {
 
         return await this.collection.query({
             queryEmbeddings: [embedding],
-            nResults: limit
+            nResults: limit,
+            include: ["documents", "metadatas"]
         });
 
     }

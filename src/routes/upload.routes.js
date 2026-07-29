@@ -34,16 +34,20 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
 
         // Split into chunks
         const chunks = splitter.split(text);
-        for (const chunk of chunks) {
+        for (const [index, chunk] of chunks.entries()) {
             const response = await ai.models.embedContent({
                 model: "gemini-embedding-001",
                 contents: chunk
             });
-            const embedding = response.embeddings[0].values;
+            const embedding = await embedder.create(chunk);
             await chroma.addDocument(
                 randomUUID(),
                 embedding,
-                chunk
+                chunk,
+                {
+                    fileName: req.file.originalname,
+                    chunk: index + 1
+                }
             );
         }
         res.json({

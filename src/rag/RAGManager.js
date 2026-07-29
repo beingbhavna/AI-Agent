@@ -23,7 +23,10 @@ export default class RAGManager {
             return "";
         }
 
-        return result.documents[0].join("\n");
+        return {
+            context: result.documents[0].join("\n"),
+            sources: result.metadatas[0]
+        };
 
     }
 
