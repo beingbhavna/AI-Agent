@@ -46,13 +46,16 @@ export default class ChromaService {
 
     }
 
-    async search(embedding, limit = 5) {
+    async search(embedding, userId, limit = 5) {
 
         await this.init();
 
         return await this.collection.query({
             queryEmbeddings: [embedding],
             nResults: limit,
+            where: {
+                userId: userId
+            },
             include: ["documents", "metadatas"]
         });
 

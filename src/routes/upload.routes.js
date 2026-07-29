@@ -45,6 +45,7 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
                 embedding,
                 chunk,
                 {
+                    userId,
                     fileName: req.file.originalname,
                     chunk: index + 1
                 }

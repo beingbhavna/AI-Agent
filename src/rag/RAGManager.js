@@ -13,11 +13,11 @@ export default class RAGManager {
         await this.vector.init();
     }
 
-    async search(query) {
+    async search(userId, query) {
 
         const embedding = await this.embedding.create(query);
 
-        const result = await this.vector.search(embedding);
+        const result = await this.vector.search(embedding, userId);
 
         if (!result.documents || result.documents.length === 0) {
             return "";

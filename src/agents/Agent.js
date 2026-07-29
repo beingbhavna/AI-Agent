@@ -36,7 +36,7 @@ export default class Agent {
             // ===========================
 
             const history = await this.memory.getConversation(userId);
-            const rag = await this.rag.search(message);
+            const rag = await this.rag.search(userId, message);
             const context = rag.context;
             const sources = rag.sources;
             console.log("RAG Context:", context);
