@@ -1,10 +1,11 @@
 import CalculatorTool from "./calculator.tool.js";
 import WeatherTool from "./weather.tool.js";
 import DatabaseTool from "./database.tool.js";
+import WebSearchTool from "./WebSearchTool.js";
 export default class ToolManager {
 
     constructor() {
-        this.tools = [new CalculatorTool(), new WeatherTool(), new DatabaseTool()];
+        this.tools = [new CalculatorTool(), new WeatherTool(), new DatabaseTool(), new WebSearchTool()];
     }
 
     getDefinitions() {
