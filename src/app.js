@@ -1,40 +1,31 @@
 import express from "express";
 import dotenv from "dotenv";
-import client from "./services/openai.service.js";
-import Agent from "./agents/Agent.js";
-import ai from "./services/openai.service.js";
-import { chat } from "./controllers/chat.controller.js";
+
+import connectDB from "./config/db.js";
+
 import chatRoutes from "./routes/chat.routes.js";
-const router = express.Router();
+import uploadRoutes from "./routes/upload.routes.js";
 
-router.post("/chat", chat);
+dotenv.config();
 
-export default router;
-// dotenv.config();
+await connectDB();
+
 const app = express();
+
 app.use(express.json());
+
 app.use("/api", chatRoutes);
-const agent = new Agent(ai);
+app.use("/api", uploadRoutes);
 
-async function main() {
-    try {
-        const response = await client.models.generateContent({
-            model: "gemini-3.6-flash",
-            contents: "Explain AI Agents in simple words.",
-        });
+app.get("/", (req, res) => {
 
-        console.log(response.text);
-    } catch (error) {
-        console.error(error);
-    }
-}
-main();
+    res.json({
+        success: true,
+        message: "AI Agent Server Running 🚀"
+    });
 
-app.get("/", async (req, res) => {
-    const answer = await agent.chat("Explain AI Agents in simple words.");
-    res.json({ success: true, answer: answer });
 });
 
 app.listen(process.env.PORT, () => {
-    console.log("Server Running");
+    console.log("✅ Server Running");
 });

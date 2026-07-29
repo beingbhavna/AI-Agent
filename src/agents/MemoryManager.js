@@ -1,27 +1,34 @@
+import Conversation from "../models/Conversation.js";
+
 export default class MemoryManager {
 
-    constructor() {
-        this.memory = new Map();
+    async getConversation(userId) {
+
+        const conversation = await Conversation.findOne({ userId });
+
+        return conversation ? conversation.messages : [];
     }
 
-    getConversation(userId) {
-        return this.memory.get(userId) || [];
-    }
+    async addMessage(userId, role, text) {
 
-    addMessage(userId, role, text) {
+        let conversation = await Conversation.findOne({ userId });
 
-        const conversation = this.getConversation(userId);
+        if (!conversation) {
+            conversation = new Conversation({
+                userId,
+                messages: []
+            });
+        }
 
-        conversation.push({
+        conversation.messages.push({
             role,
             text
         });
 
-        this.memory.set(userId, conversation);
+        await conversation.save();
     }
 
-    clearConversation(userId) {
-        this.memory.delete(userId);
+    async clearConversation(userId) {
+        await Conversation.deleteOne({ userId });
     }
-
 }
