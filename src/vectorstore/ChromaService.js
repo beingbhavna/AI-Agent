@@ -23,6 +23,7 @@ export default class ChromaService {
                 name: "documents",
                 embeddingFunction: null
             });
+
             console.log("✅ Chroma Collection Ready");
 
         } catch (error) {
@@ -36,12 +37,19 @@ export default class ChromaService {
     }
 
     async addDocument(id, embedding, text, metadata) {
+
         await this.init();
+
         await this.collection.add({
+
             ids: [id],
+
             embeddings: [embedding],
+
             documents: [text],
+
             metadatas: [metadata]
+
         });
 
     }
@@ -51,12 +59,21 @@ export default class ChromaService {
         await this.init();
 
         return await this.collection.query({
+
             queryEmbeddings: [embedding],
+
             nResults: limit,
+
             where: {
                 userId: userId
             },
-            include: ["documents", "metadatas"]
+
+            include: [
+                "documents",
+                "metadatas",
+                "distances"
+            ]
+
         });
 
     }

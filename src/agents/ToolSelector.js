@@ -82,7 +82,23 @@ Return:
   "tool":"web_search",
   "input":"<search query>"
 }
+4. If the user asks about:
 
+- employee
+- customer
+- database
+- sql
+- salary
+- department
+- order
+- invoice
+
+Return:
+
+{
+   "tool":"sql",
+   "input":"SQL QUERY"
+}
 Example:
 
 User: Latest Angular version

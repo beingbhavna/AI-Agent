@@ -40,16 +40,38 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
                 contents: chunk
             });
             const embedding = await embedder.create(chunk);
-            await chroma.addDocument(
-                randomUUID(),
-                embedding,
-                chunk,
-                {
-                    userId,
-                    fileName: req.file.originalname,
-                    chunk: index + 1
-                }
-            );
+            for (let i = 0; i < chunks.length; i++) {
+
+                const chunk = chunks[i];
+
+                const response = await ai.models.embedContent({
+                    model: "gemini-embedding-001",
+                    contents: chunk
+                });
+
+                const embedding = response.embeddings[0].values;
+
+                await chroma.addDocument(
+
+                    randomUUID(),
+
+                    embedding,
+
+                    chunk,
+
+                    {
+                        userId: req.body.userId || "default",
+
+                        fileName: req.file.originalname,
+
+                        chunk: i + 1,
+
+                        uploadedAt: new Date().toISOString()
+                    }
+
+                );
+
+            }
         }
         res.json({
             success: true,

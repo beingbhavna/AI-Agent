@@ -1,6 +1,6 @@
 import Conversation from "../models/Conversation.js";
 
-export default class DatabaseTool {
+export default class ConversationCountTool{
 
     getDefinition() {
 
