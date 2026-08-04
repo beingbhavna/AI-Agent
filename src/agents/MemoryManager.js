@@ -1,11 +1,20 @@
-import Conversation from "../models/Conversation.js";
+import db from "../config/db.js";
 
 export default class MemoryManager {
 
     async getConversation(userId) {
         try {
-            const conversation = await Conversation.findOne({ userId });
-            return conversation ? conversation.messages : [];
+            console.log("Loading conversation for:", userId);
+            const [rows] = await db.query(
+                `SELECT role, message AS text
+     FROM messages
+     WHERE user_id = ?
+     ORDER BY id ASC`,
+                [userId]
+            );
+
+            return rows;
+
         } catch (error) {
             console.warn("Memory read failed:", error.message);
             return [];
@@ -14,29 +23,29 @@ export default class MemoryManager {
 
     async addMessage(userId, role, text) {
         try {
-            let conversation = await Conversation.findOne({ userId });
+            console.log("Saving message:", userId, role, text);
 
-            if (!conversation) {
-                conversation = new Conversation({
-                    userId,
-                    messages: []
-                });
-            }
+            await db.query(
+                "INSERT INTO messages(user_id, role, message) VALUES(?,?,?)",
+                [userId, role, text]
+            );
 
-            conversation.messages.push({
-                role,
-                text
-            });
+            console.log("✅ Message Saved");
 
-            await conversation.save();
         } catch (error) {
-            console.warn("Memory write failed:", error.message);
+            console.error("Memory write failed:", error);
         }
     }
 
     async clearConversation(userId) {
         try {
-            await Conversation.deleteOne({ userId });
+
+            await db.query(
+                `DELETE FROM messages
+                 WHERE user_id=?`,
+                [userId]
+            );
+
         } catch (error) {
             console.warn("Memory clear failed:", error.message);
         }

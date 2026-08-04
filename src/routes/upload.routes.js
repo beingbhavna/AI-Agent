@@ -34,60 +34,33 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
 
         // Split into chunks
         const chunks = splitter.split(text);
-        for (const [index, chunk] of chunks.entries()) {
-            const response = await ai.models.embedContent({
-                model: "gemini-embedding-001",
-                contents: chunk
-            });
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
             const embedding = await embedder.create(chunk);
-            for (let i = 0; i < chunks.length; i++) {
-
-                const chunk = chunks[i];
-
-                const response = await ai.models.embedContent({
-                    model: "gemini-embedding-001",
-                    contents: chunk
-                });
-
-                const embedding = response.embeddings[0].values;
-
-                await chroma.addDocument(
-
-                    randomUUID(),
-
-                    embedding,
-
-                    chunk,
-
-                    {
-                        userId: req.body.userId || "default",
-
-                        fileName: req.file.originalname,
-
-                        chunk: i + 1,
-
-                        uploadedAt: new Date().toISOString()
-                    }
-
-                );
-
-            }
+            await chroma.addDocument(
+                randomUUID(),
+                embedding,
+                chunk,
+                {
+                    userId: req.body.userId || "bhavna",
+                    fileName: req.file.originalname,
+                    chunk: i + 1,
+                    uploadedAt: new Date().toISOString()
+                }
+            );
+            console.log(`Inserted Chunk ${i + 1}`);
         }
         res.json({
             success: true,
             chunks: chunks.length,
             message: "PDF Indexed Successfully"
         });
-
     } catch (error) {
-
         res.status(500).json({
             success: false,
             error: error.message
         });
-
     }
-
 });
 
 export default router;

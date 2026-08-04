@@ -1,14 +1,19 @@
 import express from "express";
 import dotenv from "dotenv";
 
-import connectDB from "./config/db.js";
+import db from "./config/db.js";
 
 import chatRoutes from "./routes/chat.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 
 dotenv.config();
 
-await connectDB();
+try {
+    await db.getConnection();
+    console.log("✅ MySQL Connected");
+} catch (err) {
+    console.log(err);
+}
 
 const app = express();
 
