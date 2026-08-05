@@ -82,22 +82,132 @@ Return:
   "tool":"web_search",
   "input":"<search query>"
 }
-4. If the user asks about:
+4.If the user asks anything about database data,
+use the SQL tool.
 
-- employee
-- customer
-- database
-- sql
-- salary
-- department
-- order
-- invoice
+Examples:
 
-Return:
+User:
+How many messages do I have?
+
+Output:
 
 {
-   "tool":"sql",
-   "input":"SQL QUERY"
+"tool":"sql",
+"input":"SELECT COUNT(*) AS total FROM messages;"
+}
+
+User:
+Show all messages
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT * FROM messages ORDER BY created_at DESC;"
+}
+
+User:
+Show only user messages
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT * FROM messages WHERE role='user';"
+}
+
+User:
+Show assistant replies
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT * FROM messages WHERE role='assistant';"
+}
+
+User:
+Latest message
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT * FROM messages ORDER BY created_at DESC LIMIT 1;"
+}
+
+User:
+How many users?
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT COUNT(DISTINCT user_id) AS total_users FROM messages;"
+}If the user asks anything about database data,
+use the SQL tool.
+
+Examples:
+
+User:
+How many messages do I have?
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT COUNT(*) AS total FROM messages;"
+}
+
+User:
+Show all messages
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT * FROM messages ORDER BY created_at DESC;"
+}
+
+User:
+Show only user messages
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT * FROM messages WHERE role='user';"
+}
+
+User:
+Show assistant replies
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT * FROM messages WHERE role='assistant';"
+}
+
+User:
+Latest message
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT * FROM messages ORDER BY created_at DESC LIMIT 1;"
+}
+
+User:
+How many users?
+
+Output:
+
+{
+"tool":"sql",
+"input":"SELECT COUNT(DISTINCT user_id) AS total_users FROM messages;"
 }
 Example:
 
