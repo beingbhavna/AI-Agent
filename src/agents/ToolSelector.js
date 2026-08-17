@@ -3,247 +3,128 @@ import { MODEL } from "../config/constants.js";
 
 export default class ToolSelector {
 
-  constructor(ai) {
-    this.ai = ai;
-  }
+    constructor(ai) {
+        this.ai = ai;
+    }
 
-  async decide(message, tools) {
+    async decide(message, tools) {
 
-    const prompt = `
-You are an AI Agent.
-
-Your job is to decide whether a tool should be used.
+        const prompt = `
+You are the Tool Selection Engine of BhavnaAI.
 
 Available tools:
-
 ${JSON.stringify(tools, null, 2)}
 
-User Message:
+User message:
 "${message}"
 
-Rules:
+Choose exactly ONE tool.
 
-1. If the user wants to perform mathematical calculations, arithmetic, percentages, equations, or conversions, return:
+RULES:
 
-{
-  "tool": "calculator",
-  "input": "<mathematical expression>"
-}
-
-Examples:
-User: Calculate 25 * 5
-Output:
-{
-  "tool":"calculator",
-  "input":"25 * 5"
-}
-
---------------------------------------
-
-2. If the user asks about weather, temperature, humidity, rain, forecast, climate, or wind, return:
-
-{
-  "tool":"weather",
-  "input":"<city name>"
-}
-
-Examples:
-User: Weather in Delhi
-Output:
-{
-  "tool":"weather",
-  "input":"Delhi"
-}
-
---------------------------------------
-
-3. If the user asks about:
-
-- latest news
-- current events
-- today's news
-- sports scores
-- cricket score
-- football score
-- stock market
-- stock price
-- cryptocurrency
-- bitcoin price
-- latest software versions
-- latest Angular version
-- latest React version
-- latest .NET version
-- latest AI news
-- anything requiring current internet information
+1. calculator
+Use for:
+- arithmetic
+- mathematical calculations
+- percentages
+- equations
+- unit conversions
 
 Return:
-
 {
-  "tool":"web_search",
-  "input":"<search query>"
-}
-4.If the user asks anything about database data,
-use the SQL tool.
-
-Examples:
-
-User:
-How many messages do I have?
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT COUNT(*) AS total FROM messages;"
+  "tool": "calculator",
+  "input": "mathematical expression"
 }
 
-User:
-Show all messages
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT * FROM messages ORDER BY created_at DESC;"
-}
-
-User:
-Show only user messages
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT * FROM messages WHERE role='user';"
-}
-
-User:
-Show assistant replies
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT * FROM messages WHERE role='assistant';"
-}
-
-User:
-Latest message
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT * FROM messages ORDER BY created_at DESC LIMIT 1;"
-}
-
-User:
-How many users?
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT COUNT(DISTINCT user_id) AS total_users FROM messages;"
-}If the user asks anything about database data,
-use the SQL tool.
-
-Examples:
-
-User:
-How many messages do I have?
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT COUNT(*) AS total FROM messages;"
-}
-
-User:
-Show all messages
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT * FROM messages ORDER BY created_at DESC;"
-}
-
-User:
-Show only user messages
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT * FROM messages WHERE role='user';"
-}
-
-User:
-Show assistant replies
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT * FROM messages WHERE role='assistant';"
-}
-
-User:
-Latest message
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT * FROM messages ORDER BY created_at DESC LIMIT 1;"
-}
-
-User:
-How many users?
-
-Output:
-
-{
-"tool":"sql",
-"input":"SELECT COUNT(DISTINCT user_id) AS total_users FROM messages;"
-}
 Example:
-
-User: Latest Angular version
-
-Output:
 {
-  "tool":"web_search",
-  "input":"Latest Angular version"
+  "tool": "calculator",
+  "input": "125 * 8"
 }
 
---------------------------------------
 
-4. If no tool is required, return:
+2. weather
+Use for:
+- weather
+- temperature
+- rain
+- humidity
+- forecast
+- wind
 
+Return:
 {
-  "tool":"none",
-  "input":""
+  "tool": "weather",
+  "input": "city name"
 }
+
+
+3. web_search
+Use for:
+- latest information
+- current information
+- news
+- sports scores
+- stock prices
+- cryptocurrency prices
+- latest Angular/React/.NET versions
+- anything requiring internet information
+
+Return:
+{
+  "tool": "web_search",
+  "input": "search query"
+}
+
+
+4. sql
+Use ONLY when the user asks about data stored in the application's database.
+
+Examples:
+- How many messages do I have?
+- Show my conversation history
+- How many users are there?
+- Show my messages
+
+IMPORTANT:
+Generate ONLY SELECT SQL queries.
+
+For message-related questions, use the messages table.
+
+Example:
+{
+  "tool": "sql",
+  "input": "SELECT COUNT(*) AS total FROM messages WHERE user_id = 'bhavna';"
+}
+
+
+5. none
+Use when:
+- The answer can be obtained from the uploaded documents
+- The user is having normal conversation
+- No external tool is required
+
+Return:
+{
+  "tool": "none",
+  "input": ""
+}
+
 
 IMPORTANT:
 - Return ONLY valid JSON.
-- Do not explain your decision.
-- Do not use markdown.
-- Do not add extra text.
+- Return exactly one tool.
+- Never use markdown.
+- Never explain your decision.
 `;
 
-    const response = await retry(() =>
-      this.ai.models.generateContent({
-        model: MODEL,
-        contents: prompt
-      })
-    );
+        const response = await retry(() =>
+            this.ai.models.generateContent({
+                model: MODEL,
+                contents: prompt
+            })
+        );
 
-    return response.text.trim();
-
-  }
-
+        return response.text.trim();
+    }
 }

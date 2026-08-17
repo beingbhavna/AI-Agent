@@ -30,6 +30,16 @@ app.get("/", (req, res) => {
     });
 
 });
+app.get("/health", async (req, res) => {
+
+    res.json({
+        success: true,
+        service: "BhavnaAI",
+        status: "healthy",
+        timestamp: new Date().toISOString()
+    });
+
+});
 
 app.listen(process.env.PORT, () => {
     console.log("✅ Server Running");
