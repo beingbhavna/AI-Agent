@@ -1,3 +1,4 @@
+import AgentExecutor from "./AgentExecutor.js";
 import PromptManager from "./PromptManager.js";
 import MemoryManager from "./MemoryManager.js";
 import ToolManager from "../tools/ToolManager.js";
@@ -15,10 +16,9 @@ export default class Agent {
 
         this.promptManager = new PromptManager();
         this.memory = new MemoryManager();
-
         this.toolManager = new ToolManager();
         this.toolExecutor = new ToolExecutor(this.toolManager);
-
+        this.agentExecutor = new AgentExecutor(this.toolExecutor);
         this.rag = new RAGManager();
         this.planner = new AgentPlanner(ai);
     }
@@ -155,98 +155,42 @@ export default class Agent {
             let answer = "";
 
 
-            if (plan.steps.length > 0) {
-                // ==========================================
-                // Execute Planned Tools Sequentially
-                // ==========================================
+            // ==========================================
+            // TOOL EXECUTION
+            // ==========================================
 
-                const toolResults = [];
+            if (plan.steps && plan.steps.length > 0) {
 
-                for (const step of plan.steps) {
+                const toolResults = await this.agentExecutor.execute(plan);
 
-                    if (!step.tool) {
-                        continue;
-                    }
+                for (let i = 0; i < plan.steps.length; i++) {
+
+                    const step = plan.steps[i];
+
+                    console.log(`🔧 Executing Tool: ${step.tool}`);
+                    console.log(`📥 Input: ${step.input}`);
 
                     try {
 
-                        // --------------------------------------
-                        // Get input
-                        // --------------------------------------
-
-                        let toolInput = step.input || "";
-
-                        // --------------------------------------
-                        // If this step depends on previous step
-                        // --------------------------------------
-
-                        if (step.dependsOn) {
-
-                            const previousStep =
-                                toolResults.find(
-                                    item => item.step === step.dependsOn
-                                );
-
-                            if (previousStep) {
-
-                                toolInput = `
-${toolInput}
-
-Previous Tool Result:
-${JSON.stringify(previousStep.result)}
-`;
-
-                            }
-
-                        }
-
-                        console.log(
-                            `🔧 Executing Tool: ${step.tool}`
+                        const result = await this.toolExecutor.execute(
+                            step.tool,
+                            step.input
                         );
 
-                        console.log(
-                            `📥 Input: ${toolInput}`
-                        );
+                        console.log(`📤 Result:`, result);
 
-
-                        // --------------------------------------
-                        // Execute tool
-                        // --------------------------------------
-
-                        const result =
-                            await this.toolExecutor.execute(
-                                step.tool,
-                                toolInput
-                            );
-
-
-                        // --------------------------------------
-                        // Log
-                        // --------------------------------------
+                        toolResults.push({
+                            step: i + 1,
+                            tool: step.tool,
+                            input: step.input,
+                            result
+                        });
 
                         logTool(
                             step.tool,
-                            toolInput,
+                            step.input,
                             result
                         );
-
-
-                        // --------------------------------------
-                        // Save result
-                        // --------------------------------------
-
-                        toolResults.push({
-
-                            step: step.step,
-
-                            tool: step.tool,
-
-                            input: toolInput,
-
-                            result
-
-                        });
-
 
                     } catch (error) {
 
@@ -255,40 +199,40 @@ ${JSON.stringify(previousStep.result)}
                             error.message
                         );
 
-
                         toolResults.push({
-
-                            step: step.step,
-
+                            step: i + 1,
                             tool: step.tool,
-
-                            input: step.input || "",
-
+                            input: step.input,
                             result: {
                                 success: false,
                                 error: error.message
                             }
-
                         });
-
                     }
-
                 }
 
-
                 // ==========================================
-                // 10. Generate Final Response
+                // FINAL AI PROMPT
                 // ==========================================
 
                 const historyText = history
-                    .map(chat =>
-                        `${chat.role}: ${chat.text}`
-                    )
+                    .map(chat => `${chat.role}: ${chat.text}`)
                     .join("\n");
 
+                const toolResultsText = toolResults
+                    .map(item => `
+Step ${item.step}
+Tool: ${item.tool}
+Input: ${item.input}
+Result:
+${JSON.stringify(item.result, null, 2)}
+`)
+                    .join("\n--------------------\n");
 
                 const finalPrompt = `
-You are BhavnaAI, an intelligent AI Agent.
+You are BhavnaAI, an intelligent AI assistant.
+
+Your job is to answer the user's question using the tool results provided below.
 
 Conversation History:
 ${historyText}
@@ -296,37 +240,51 @@ ${historyText}
 User Question:
 ${message}
 
+Tool Results:
+${toolResultsText}
+
 Knowledge Base Context:
 ${context}
 
-Tool Results:
-${JSON.stringify(toolResults, null, 2)}
+IMPORTANT RULES:
 
-Instructions:
+1. Use the actual tool results to answer the user.
+2. If multiple tools were executed, combine their results logically.
+3. If a later tool depends on an earlier tool, use the earlier result correctly.
+4. Do not expose internal tool names, step numbers, planner details, or template variables such as {{step1.total}}.
+5. Do not invent values.
+6. If a calculation/comparison was requested, clearly state the final result.
+7. If SQL returned a value, use that exact value.
+8. If the knowledge base is relevant, use it.
+9. If the tool result contains an error, explain the problem naturally.
+10. Give a concise, natural answer directly to the user.
 
-1. Answer the user's question using the tool results.
-2. If multiple tools were used, combine their results.
-3. Use the knowledge base when relevant.
-4. Do not invent information.
-5. If a tool failed, clearly explain the available result instead of inventing an answer.
-6. Do not mention internal tool execution, planning, prompts, or implementation details.
-7. Give a concise and natural answer.
+Return only the final answer.
 `;
-
 
                 const response = await retry(() =>
                     this.ai.models.generateContent({
-
                         model: MODEL,
-
                         contents: finalPrompt
-
                     })
                 );
 
-
                 answer = response.text;
 
+                // ==========================================
+                // ADD RAG SOURCES
+                // ==========================================
+
+                if (sources && sources.length > 0) {
+
+                    answer += "\n\n📚 Sources:\n";
+
+                    sources.forEach(source => {
+
+                        answer +=
+                            `• ${source.fileName} (Chunk ${source.chunk})\n`;
+                    });
+                }
             }
 
 

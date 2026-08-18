@@ -159,7 +159,14 @@ Return:
                 contents: prompt
             })
         );
+        let result = response.text.trim();
 
-        return response.text.trim();
+        result = result
+            .replace(/^```json\s*/i, "")
+            .replace(/^```\s*/i, "")
+            .replace(/\s*```$/i, "")
+            .trim();
+
+        return result;
     }
 }
