@@ -8,6 +8,7 @@ import { MODEL } from "../config/constants.js";
 import RAGManager from "../rag/RAGManager.js";
 import ToolExecutor from "./ToolExecutor.js";
 import AgentPlanner from "./AgentPlanner.js";
+import AgentSelfCorrection from "./AgentSelfCorrection.js";
 
 export default class Agent {
 
@@ -18,9 +19,10 @@ export default class Agent {
         this.memory = new MemoryManager();
         this.toolManager = new ToolManager();
         this.toolExecutor = new ToolExecutor(this.toolManager);
-        this.agentExecutor = new AgentExecutor(this.toolExecutor);
+        this.agentExecutor = new AgentExecutor(this.toolExecutor,this.selfCorrection);
         this.rag = new RAGManager();
         this.planner = new AgentPlanner(ai);
+        this.selfCorrection = new AgentSelfCorrection(ai);
     }
 
 

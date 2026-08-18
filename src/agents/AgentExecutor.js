@@ -2,8 +2,9 @@ import { logTool } from "../utils/logger.js";
 
 export default class AgentExecutor {
 
-    constructor(toolExecutor) {
+    constructor(toolExecutor, selfCorrection) {
         this.toolExecutor = toolExecutor;
+        this.selfCorrection = selfCorrection;
     }
 
     async execute(plan) {
@@ -36,18 +37,15 @@ export default class AgentExecutor {
 
                 if (previousStep) {
 
-                    const previousResult =
-                        previousStep.result;
+                    const previousResult = previousStep.result;
 
-                    // SQL result
                     if (
                         previousResult &&
                         previousResult.rows &&
                         previousResult.rows.length > 0
                     ) {
 
-                        const row =
-                            previousResult.rows[0];
+                        const row = previousResult.rows[0];
 
                         for (const key of Object.keys(row)) {
 
@@ -58,49 +56,124 @@ export default class AgentExecutor {
                                 placeholder,
                                 String(row[key])
                             );
+
                         }
                     }
                 }
             }
 
-            console.log(
-                `🔧 Executing Tool: ${step.tool}`
-            );
+            console.log(`🔧 Executing Tool: ${step.tool}`);
+            console.log(`📥 Input: ${input}`);
 
-            console.log(
-                `📥 Input: ${input}`
-            );
+            let result;
 
             try {
 
-                const result =
-                    await this.toolExecutor.execute(
-                        step.tool,
-                        input
+                // ==========================================
+                // First Tool Execution
+                // ==========================================
+
+                result = await this.toolExecutor.execute(
+                    step.tool,
+                    input
+                );
+
+                console.log(`📤 Result:`, result);
+
+                // ==========================================
+                // Check Tool Failure
+                // ==========================================
+
+                if (
+                    result &&
+                    result.success === false &&
+                    this.selfCorrection
+                ) {
+
+                    console.log(
+                        `⚠️ Tool failed. Starting self-correction...`
                     );
 
-                console.log(
-                    `📤 Result:`,
-                    result
-                );
+                    try {
+
+                        const correction =
+                            await this.selfCorrection.correct(
+                                step.tool,
+                                input,
+                                result.error
+                            );
+
+                        console.log(
+                            `🧠 Correction Response:`,
+                            correction
+                        );
+
+                        let correctionData;
+
+                        try {
+
+                            correctionData =
+                                JSON.parse(correction);
+
+                        } catch (error) {
+
+                            console.log(
+                                "❌ Invalid correction JSON"
+                            );
+
+                            correctionData = {
+                                retry: false,
+                                input: ""
+                            };
+                        }
+
+                        // ==========================================
+                        // Retry Corrected Input
+                        // ==========================================
+
+                        if (
+                            correctionData.retry === true &&
+                            correctionData.input
+                        ) {
+
+                            input = correctionData.input;
+
+                            console.log(
+                                `🔄 Retrying ${step.tool}`
+                            );
+
+                            console.log(
+                                `📥 Corrected Input: ${input}`
+                            );
+
+                            result =
+                                await this.toolExecutor.execute(
+                                    step.tool,
+                                    input
+                                );
+
+                            console.log(
+                                `📤 Retry Result:`,
+                                result
+                            );
+
+                        }
+
+                    } catch (correctionError) {
+
+                        console.log(
+                            `❌ Self-Correction Error:`,
+                            correctionError.message
+                        );
+
+                    }
+                }
 
                 logTool(
                     step.tool,
                     input,
                     result
                 );
-
-                results.push({
-
-                    step: step.step || i + 1,
-
-                    tool: step.tool,
-
-                    input,
-
-                    result
-
-                });
 
             } catch (error) {
 
@@ -109,21 +182,98 @@ export default class AgentExecutor {
                     error.message
                 );
 
-                results.push({
+                result = {
+                    success: false,
+                    error: error.message
+                };
 
-                    step: step.step || i + 1,
+                // ==========================================
+                // Self-Correction for thrown errors
+                // ==========================================
 
-                    tool: step.tool,
+                if (this.selfCorrection) {
 
-                    input,
+                    try {
 
-                    result: {
-                        success: false,
-                        error: error.message
+                        console.log(
+                            `🧠 Attempting self-correction...`
+                        );
+
+                        const correction =
+                            await this.selfCorrection.correct(
+                                step.tool,
+                                input,
+                                error.message
+                            );
+
+                        let correctionData;
+
+                        try {
+
+                            correctionData =
+                                JSON.parse(correction);
+
+                        } catch (parseError) {
+
+                            correctionData = {
+                                retry: false,
+                                input: ""
+                            };
+
+                        }
+
+                        if (
+                            correctionData.retry === true &&
+                            correctionData.input
+                        ) {
+
+                            input = correctionData.input;
+
+                            console.log(
+                                `🔄 Retrying ${step.tool}`
+                            );
+
+                            console.log(
+                                `📥 Corrected Input: ${input}`
+                            );
+
+                            result =
+                                await this.toolExecutor.execute(
+                                    step.tool,
+                                    input
+                                );
+
+                            console.log(
+                                `📤 Retry Result:`,
+                                result
+                            );
+                        }
+
+                    } catch (correctionError) {
+
+                        console.log(
+                            `❌ Self-Correction Failed:`,
+                            correctionError.message
+                        );
                     }
-
-                });
+                }
             }
+
+            // ==========================================
+            // Save Result
+            // ==========================================
+
+            results.push({
+
+                step: step.step || i + 1,
+
+                tool: step.tool,
+
+                input,
+
+                result
+
+            });
         }
 
         return results;
