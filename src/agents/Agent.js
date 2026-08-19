@@ -1,55 +1,81 @@
-import AgentExecutor from "./AgentExecutor.js";
 import PromptManager from "./PromptManager.js";
 import MemoryManager from "./MemoryManager.js";
 import ToolManager from "../tools/ToolManager.js";
-import { logTool } from "../utils/logger.js";
 import { retry } from "../utils/retry.js";
 import { MODEL } from "../config/constants.js";
 import RAGManager from "../rag/RAGManager.js";
 import ToolExecutor from "./ToolExecutor.js";
+import ToolSelector from "./ToolSelector.js";
 import AgentPlanner from "./AgentPlanner.js";
-import AgentSelfCorrection from "./AgentSelfCorrection.js";
-import DatabaseSchemaTool from "../tools/DatabaseSchemaTool.js";
+import AgentExecutor from "./AgentExecutor.js";
 
 export default class Agent {
 
     constructor(ai) {
+
         this.ai = ai;
 
         this.promptManager = new PromptManager();
         this.memory = new MemoryManager();
+
         this.toolManager = new ToolManager();
-        this.toolExecutor = new ToolExecutor(this.toolManager);
-        this.agentExecutor = new AgentExecutor(this.toolExecutor, this.selfCorrection);
-        this.rag = new RAGManager();
+        this.toolExecutor = new ToolExecutor(
+            this.toolManager
+        );
+        // Kept because your existing project may use it elsewhere.
+        this.toolSelector = new ToolSelector(ai);
+
+
+        this.agentExecutor = new AgentExecutor(
+            this.toolExecutor
+        );
         this.planner = new AgentPlanner(ai);
-        this.selfCorrection = new AgentSelfCorrection(ai);
-        this.schemaTool = new DatabaseSchemaTool();
-        this.sessionState = new Map();
+        this.rag = new RAGManager();
     }
 
+
+    // =========================================================
+    // INITIALIZE AGENT
+    // =========================================================
 
     async init() {
 
-        await this.rag.init();
+        try {
 
+            await this.rag.init();
+
+            console.log("🤖 Agent Initialized");
+
+        } catch (error) {
+
+            console.log(
+                "❌ Agent Initialization Error:",
+                error.message
+            );
+
+            throw error;
+        }
     }
 
+
+    // =========================================================
+    // CHAT
+    // =========================================================
 
     async chat(userId, message) {
 
         try {
 
-            // ==========================================
+            // =================================================
             // 1. Initialize RAG
-            // ==========================================
+            // =================================================
 
             await this.rag.init();
 
 
-            // ==========================================
+            // =================================================
             // 2. Save User Message
-            // ==========================================
+            // =================================================
 
             await this.memory.addMessage(
                 userId,
@@ -58,73 +84,74 @@ export default class Agent {
             );
 
 
-            // ==========================================
-            // 3. Get Conversation History
-            // ==========================================
+            // =================================================
+            // 3. Load Conversation History
+            // =================================================
 
             const history =
-                await this.memory.getConversation(userId);
+                await this.memory.getConversation(
+                    userId
+                );
 
 
-            // ==========================================
+            // =================================================
             // 4. Search Knowledge Base
-            // ==========================================
+            // =================================================
 
-            const ragResult =
-                await this.rag.search(userId, message);
-
-            const context = ragResult.context;
-            const sources = ragResult.sources;
-
-            console.log("RAG Context:", context);
-
-
-            // ==========================================
-            // 5. Get Available Tools
-            // ==========================================
-
-            const tools = this.toolManager.getDefinitions();
-            let databaseSchema = null;
+            let context = "";
+            let sources = [];
 
             try {
 
-                const schemaResult =
-                    await this.schemaTool.execute();
-
-                if (schemaResult.success) {
-
-                    databaseSchema = schemaResult.schema;
-
-                    console.log(
-                        "🗄️ Database Schema Loaded"
+                const ragResult =
+                    await this.rag.search(
+                        userId,
+                        message
                     );
 
-                }
+                context =
+                    ragResult?.context || "";
+
+                sources =
+                    ragResult?.sources || [];
 
             } catch (error) {
 
                 console.log(
-                    "Schema Error:",
+                    "RAG Error:",
                     error.message
                 );
             }
 
-            // ==========================================
+
+            console.log(
+                "RAG Context:",
+                context
+            );
+
+
+            // =================================================
+            // 5. Get Available Tools
+            // =================================================
+
+            const tools =
+                this.toolManager.getDefinitions();
+
+
+            // =================================================
             // 6. Create Agent Plan
-            // ==========================================
-            const previousState = this.sessionState.get(userId) || {
-                lastResults: []
-            };
-            let planResponse = '{"steps":[]}';
+            // =================================================
+
+            let planResponse =
+                '{"steps":[]}';
 
             try {
 
-                planResponse = await this.planner.plan(
-                    message,
-                    tools,
-                    databaseSchema,
-                    previousState.lastResults
-                );
+                planResponse =
+                    await this.planner.plan(
+                        message,
+                        tools
+                    );
 
             } catch (error) {
 
@@ -132,7 +159,6 @@ export default class Agent {
                     "Planner Error:",
                     error.message
                 );
-
             }
 
 
@@ -142,131 +168,126 @@ export default class Agent {
             );
 
 
-            // ==========================================
-            // 7. Parse Plan
-            // ==========================================
+            // =================================================
+            // 7. Parse Planner Response
+            // =================================================
 
             let plan;
 
             try {
 
-                plan = JSON.parse(planResponse);
+                plan =
+                    this.parsePlannerResponse(
+                        planResponse
+                    );
 
             } catch (error) {
 
                 console.log(
-                    "❌ Invalid Planner JSON"
+                    "❌ Planner JSON Error:",
+                    error.message
                 );
 
                 plan = {
                     steps: []
                 };
-
             }
 
 
-            // ==========================================
-            // 8. Safety Validation
-            // ==========================================
+            // =================================================
+            // 8. Validate Plan
+            // =================================================
 
-            if (!plan || !Array.isArray(plan.steps)) {
+            if (
+                !plan ||
+                !Array.isArray(plan.steps)
+            ) {
 
                 plan = {
                     steps: []
                 };
-
             }
 
 
-            // ==========================================
-            // 9. Execute Planned Tools
-            // ==========================================
+            // =================================================
+            // 9. Execute Complete Plan
+            // =================================================
 
-            let answer = "";
+            let toolResults = [];
 
+            if (plan.steps.length > 0) {
 
-            // ==========================================
-            // TOOL EXECUTION
-            // ==========================================
+                try {
 
-            if (plan.steps && plan.steps.length > 0) {
+                    toolResults =
+                        await this.agentExecutor.execute(
+                            plan
+                        );
 
-                const toolResults = await this.agentExecutor.execute(plan);
-                if (toolResults && toolResults.length > 0) {
-                    this.sessionState.set(userId, {
-                        lastResults: toolResults
-                    });
+                } catch (error) {
+
+                    console.log(
+                        "❌ Agent Executor Error:",
+                        error.message
+                    );
+
+                    toolResults = [];
                 }
-                for (let i = 0; i < plan.steps.length; i++) {
+            }
+            // =================================================
+            // 11. Conversation History
+            // =================================================
 
-                    const step = plan.steps[i];
-
-                    console.log(`🔧 Executing Tool: ${step.tool}`);
-                    console.log(`📥 Input: ${step.input}`);
-
-                    try {
-
-                        const result = await this.toolExecutor.execute(
-                            step.tool,
-                            step.input
-                        );
-
-                        console.log(`📤 Result:`, result);
-
-                        toolResults.push({
-                            step: i + 1,
-                            tool: step.tool,
-                            input: step.input,
-                            result
-                        });
-
-                        logTool(
-                            step.tool,
-                            step.input,
-                            result
-                        );
-
-                    } catch (error) {
-
-                        console.log(
-                            `❌ Tool Error (${step.tool}):`,
-                            error.message
-                        );
-
-                        toolResults.push({
-                            step: i + 1,
-                            tool: step.tool,
-                            input: step.input,
-                            result: {
-                                success: false,
-                                error: error.message
-                            }
-                        });
-                    }
-                }
-
-                // ==========================================
-                // FINAL AI PROMPT
-                // ==========================================
-
-                const historyText = history
-                    .map(chat => `${chat.role}: ${chat.text}`)
+            const historyText =
+                history
+                    .map(chat =>
+                        `${chat.role}: ${chat.text}`
+                    )
                     .join("\n");
 
-                const toolResultsText = toolResults
-                    .map(item => `
-Step ${item.step}
-Tool: ${item.tool}
-Input: ${item.input}
-Result:
-${JSON.stringify(item.result, null, 2)}
-`)
-                    .join("\n--------------------\n");
 
-                const finalPrompt = `
+            // =================================================
+            // 12. Prepare Tool Results For AI
+            // =================================================
+
+            const toolResultsText =
+                toolResults.length > 0
+                    ? toolResults
+                        .map(item => {
+
+                            return `
+Step: ${item.step}
+
+Tool:
+${item.tool}
+
+Input:
+${typeof item.input === "object"
+                                    ? JSON.stringify(item.input)
+                                    : item.input}
+
+Result:
+${JSON.stringify(
+                                        item.result,
+                                        null,
+                                        2
+                                    )}
+`;
+
+                        })
+                        .join("\n----------------------\n")
+                    : "No tools were executed.";
+
+
+            // =================================================
+            // 13. FINAL AI PROMPT
+            // =================================================
+
+            const finalPrompt = `
+
 You are BhavnaAI, an intelligent AI assistant.
 
-Your job is to answer the user's question using the tool results provided below.
+Your job is to answer the user's question using the actual results returned by the tools.
 
 Conversation History:
 ${historyText}
@@ -280,148 +301,121 @@ ${toolResultsText}
 Knowledge Base Context:
 ${context}
 
-IMPORTANT RULES:
+Instructions:
 
-1. Use the actual tool results to answer the user.
+1. Use the actual tool results to answer the user's question.
+
 2. If multiple tools were executed, combine their results logically.
-3. If a later tool depends on an earlier tool, use the earlier result correctly.
-4. Do not expose internal tool names, step numbers, planner details, or template variables such as {{step1.total}}.
-5. Do not invent values.
-6. If a calculation/comparison was requested, clearly state the final result.
-7. If SQL returned a value, use that exact value.
-8. If the knowledge base is relevant, use it.
-9. If the tool result contains an error, explain the problem naturally.
-10. Give a concise, natural answer directly to the user.
 
-Return only the final answer.
+3. If one tool depends on a previous tool, use the resolved result from the later tool result.
+
+4. Never invent numbers or information.
+
+5. If SQL returned a value, use the exact value returned by SQL.
+
+6. If a calculator returned true or false, explain the result naturally.
+
+7. If a calculator returned a numeric result, use that exact result.
+
+8. If a tool returned an error, explain the problem naturally.
+
+9. Use the Knowledge Base when relevant.
+
+10. Do not mention internal tool names.
+
+11. Do not mention planner steps.
+
+12. Do not mention AgentExecutor.
+
+13. Do not mention internal implementation details.
+
+14. Do not expose placeholders such as {{step1.total}}.
+
+15. Do not expose JSON unless the user explicitly asks for JSON.
+
+16. Do not make up information that is not present in the tool results or knowledge base.
+
+17. If the user's question is a normal conversational question and no tool result is needed, answer naturally.
+
+18. Keep the final answer clear and concise.
+
+Return ONLY the answer to the user.
 `;
 
-                const response = await retry(() =>
+
+            // console.log(
+            //     "🧠 FINAL PROMPT:"
+            // );
+
+            // console.log(
+            //     finalPrompt
+            // );
+
+
+            // =================================================
+            // 14. Generate Final Answer
+            // =================================================
+
+            const response =
+                await retry(() =>
                     this.ai.models.generateContent({
                         model: MODEL,
                         contents: finalPrompt
                     })
                 );
 
-                answer = response.text;
 
-                // ==========================================
-                // ADD RAG SOURCES
-                // ==========================================
-
-                if (sources && sources.length > 0) {
-
-                    answer += "\n\n📚 Sources:\n";
-
-                    sources.forEach(source => {
-
-                        answer +=
-                            `• ${source.fileName} (Chunk ${source.chunk})\n`;
-                    });
-                }
-            }
+            let answer =
+                response.text?.trim() ||
+                "I was unable to generate a response.";
 
 
-            // ==========================================
-            // 11. NORMAL RAG CHAT
-            // ==========================================
-
-            else {
-
-                const historyText = history
-                    .map(chat =>
-                        `${chat.role}: ${chat.text}`
-                    )
-                    .join("\n");
-
-
-                const prompt = `
-You are BhavnaAI, an intelligent AI assistant.
-
-Use ONLY the information provided in the Knowledge Base Context.
-
-If the answer is not present in the context, say:
-
-"I couldn't find this information in the uploaded documents."
-
-Knowledge Base Context:
-${context}
-
-Conversation History:
-${historyText}
-
-User:
-${message}
-
-Assistant:
-`;
-
-
-                const response = await retry(() =>
-                    this.ai.models.generateContent({
-
-                        model: MODEL,
-
-                        contents: prompt
-
-                    })
-                );
-
-
-                answer = response.text;
-
-            }
-
-
-            // ==========================================
-            // 12. Add RAG Sources
-            // ==========================================
+            // =================================================
+            // 15. Add Sources
+            // =================================================
 
             if (
                 sources &&
-                sources.length > 0
+                sources.length > 0 &&
+                context
             ) {
 
-                answer += "\n\n📚 Sources:\n";
+                answer +=
+                    "\n\n📚 Sources:\n";
 
+                const uniqueSources =
+                    [];
 
-                // Remove duplicate sources
+                for (
+                    const source
+                    of sources
+                ) {
 
-                const uniqueSources = [];
+                    const sourceText =
+                        `• ${source.fileName} (Chunk ${source.chunk})`;
 
-                const seen = new Set();
+                    if (
+                        !uniqueSources.includes(
+                            sourceText
+                        )
+                    ) {
 
-
-                for (const source of sources) {
-
-                    const key =
-                        `${source.fileName}-${source.chunk}`;
-
-
-                    if (!seen.has(key)) {
-
-                        seen.add(key);
-
-                        uniqueSources.push(source);
-
+                        uniqueSources.push(
+                            sourceText
+                        );
                     }
-
                 }
 
-
-                uniqueSources.forEach(source => {
-
-                    answer +=
-                        `• ${source.fileName} (Chunk ${source.chunk})\n`;
-
-                });
-
+                answer +=
+                    uniqueSources.join(
+                        "\n"
+                    );
             }
 
 
-            // ==========================================
-            // 13. Save Assistant Response
-            // ==========================================
+            // =================================================
+            // 16. Save Assistant Response
+            // =================================================
 
             await this.memory.addMessage(
                 userId,
@@ -435,9 +429,9 @@ Assistant:
             );
 
 
-            // ==========================================
-            // 14. Return Answer
-            // ==========================================
+            // =================================================
+            // 17. Return Answer
+            // =================================================
 
             return answer;
 
@@ -449,11 +443,112 @@ Assistant:
                 error.message
             );
 
+            const fallback =
+                "Sorry, I'm unable to process your request right now. Please try again in a moment.";
 
-            return "Sorry, I'm unable to process your request right now. Please try again in a moment.";
+            try {
 
+                await this.memory.addMessage(
+                    userId,
+                    "assistant",
+                    fallback
+                );
+
+            } catch (saveError) {
+
+                console.log(
+                    "❌ Error saving fallback response:",
+                    saveError.message
+                );
+            }
+
+            return fallback;
         }
-
     }
 
+
+    // =========================================================
+    // PARSE PLANNER JSON
+    // =========================================================
+
+    parsePlannerResponse(response) {
+
+        if (
+            !response ||
+            typeof response !== "string"
+        ) {
+
+            return {
+                steps: []
+            };
+        }
+
+
+        let cleaned =
+            response.trim();
+
+
+        // Remove markdown ```json
+        cleaned =
+            cleaned.replace(
+                /^```json\s*/i,
+                ""
+            );
+
+
+        // Remove markdown ```
+        cleaned =
+            cleaned.replace(
+                /```$/i,
+                ""
+            );
+
+
+        cleaned =
+            cleaned.trim();
+
+
+        // Find JSON object if model added extra text
+        const firstBrace =
+            cleaned.indexOf("{");
+
+        const lastBrace =
+            cleaned.lastIndexOf("}");
+
+
+        if (
+            firstBrace !== -1 &&
+            lastBrace !== -1 &&
+            lastBrace > firstBrace
+        ) {
+
+            cleaned =
+                cleaned.substring(
+                    firstBrace,
+                    lastBrace + 1
+                );
+        }
+
+
+        const parsed =
+            JSON.parse(
+                cleaned
+            );
+
+
+        if (
+            !parsed ||
+            !Array.isArray(
+                parsed.steps
+            )
+        ) {
+
+            return {
+                steps: []
+            };
+        }
+
+
+        return parsed;
+    }
 }

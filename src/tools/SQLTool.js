@@ -6,12 +6,26 @@ export default class SQLTool {
     constructor() {
         this.connection = null;
         this.validator = new SQLValidator();
+
+        // Sensitive columns that AI must never access
+        this.sensitiveColumns = [
+            "password",
+            "password_hash",
+            "token",
+            "access_token",
+            "refresh_token",
+            "secret",
+            "api_key",
+            "apikey"
+        ];
     }
 
     getDefinition() {
         return {
             name: "sql",
-            description: "Execute SELECT SQL queries on MySQL database."
+            description:
+                "Execute safe SELECT SQL queries on the MySQL database. " +
+                "Sensitive columns and dangerous SQL operations are blocked."
         };
     }
 
@@ -34,15 +48,38 @@ export default class SQLTool {
 
     validateQuery(sql) {
 
+        if (!sql || typeof sql !== "string") {
+            throw new Error("SQL query must be a valid string.");
+        }
+
         const query = sql.trim().toLowerCase();
 
-        // Allow only SELECT queries
+        // ==========================================
+        // 1. Only SELECT is allowed
+        // ==========================================
+
         if (!query.startsWith("select")) {
             throw new Error("Only SELECT queries are allowed.");
         }
 
-        // Block dangerous keywords
-        const blocked = [
+        // ==========================================
+        // 2. Block multiple statements
+        // ==========================================
+
+        const statements = query
+            .split(";")
+            .map(x => x.trim())
+            .filter(Boolean);
+
+        if (statements.length > 1) {
+            throw new Error("Multiple SQL statements are not allowed.");
+        }
+
+        // ==========================================
+        // 3. Block dangerous SQL keywords
+        // ==========================================
+
+        const blockedKeywords = [
             "drop",
             "delete",
             "truncate",
@@ -51,16 +88,48 @@ export default class SQLTool {
             "alter",
             "create",
             "grant",
-            "revoke"
+            "revoke",
+            "replace",
+            "rename",
+            "call",
+            "load_file",
+            "outfile",
+            "dumpfile"
         ];
 
-        for (const keyword of blocked) {
+        for (const keyword of blockedKeywords) {
 
-            if (query.includes(keyword)) {
-                throw new Error(`Blocked SQL keyword: ${keyword}`);
+            const regex = new RegExp(`\\b${keyword}\\b`, "i");
+
+            if (regex.test(query)) {
+                throw new Error(
+                    `Blocked SQL keyword: ${keyword}`
+                );
             }
-
         }
+
+        // ==========================================
+        // 4. Block sensitive columns
+        // ==========================================
+
+        for (const column of this.sensitiveColumns) {
+
+            const regex = new RegExp(
+                `\\b${column}\\b`,
+                "i"
+            );
+
+            if (regex.test(query)) {
+                throw new Error(
+                    `Access to sensitive column '${column}' is not allowed.`
+                );
+            }
+        }
+
+        // ==========================================
+        // 5. Existing SQL validator
+        // ==========================================
+
         return this.validator.validate(sql);
     }
 
@@ -72,7 +141,8 @@ export default class SQLTool {
 
             this.validateQuery(sql);
 
-            const [rows] = await this.connection.execute(sql);
+            const [rows] =
+                await this.connection.execute(sql);
 
             return {
                 success: true,
@@ -88,7 +158,5 @@ export default class SQLTool {
             };
 
         }
-
     }
-
 }
