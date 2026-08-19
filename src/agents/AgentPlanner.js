@@ -7,7 +7,11 @@ export default class AgentPlanner {
         this.ai = ai;
     }
 
-    async plan(message, tools) {
+    async plan(message, tools, schema = null, previousResults = []) {
+
+        const schemaText = schema
+            ? JSON.stringify(schema, null, 2)
+            : "Database schema not available.";
 
         const prompt = `
 You are the planning engine of BhavnaAI.
@@ -15,75 +19,59 @@ You are the planning engine of BhavnaAI.
 Your job is to decide which tools are required to answer the user's request.
 
 Available tools:
-
 ${JSON.stringify(tools, null, 2)}
 
-User request:
+PREVIOUS TOOL RESULTS:
+${JSON.stringify(previousResults, null, 2)}
 
+DATABASE SCHEMA:
+${schemaText}
+
+USER REQUEST:
 "${message}"
 
-Rules:
+RULES:
 
 1. If no tool is required, return:
+
 {
     "steps": []
 }
 
-2. If one tool is required, return one step.
+2. If a tool is required, create the required step.
 
-3. If multiple independent tools are required, return multiple steps.
+3. If multiple tools are required, execute them in logical order.
 
-4. Execute steps in logical order.
+4. Never create a tool that is not present in Available tools.
 
-5. If a later step needs the result of an earlier step, mark it with:
-"dependsOn": <previous step number>
+5. For database questions:
 
-6. Step numbers start from 1.
+   - First use "database_schema" if the schema is not already provided.
+   - Then use "sql".
+   - SQL must use ONLY tables and columns that exist in the provided schema.
 
-7. Never create tools that are not present in the available tools.
+6. SQL rules:
 
-8. For SQL, generate ONLY SELECT queries.
+   - ONLY SELECT queries are allowed.
+   - Never generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE or GRANT.
+   - Use the exact table names from the schema.
+   - Use the exact column names from the schema.
 
-9. Never generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE, GRANT or REVOKE.
+7. For calculations, use "calculator".
 
-10. Do not answer the user.
+8. For weather questions, use "weather".
 
-11. Return ONLY valid JSON.
+9. For current internet information, use "web_search".
 
-Return exactly this structure:
+10. If a later step depends on an earlier step, use:
 
-{
-    "steps": [
-        {
-            "step": 1,
-            "tool": "tool_name",
-            "input": "tool input",
-            "dependsOn": null
-        }
-    ]
-}
+"dependsOn": <step number>
 
+and reference values using:
 
-Example 1:
+{{step1.total}}
 
-User:
-"Calculate 25 * 8"
-
-Return:
-
-{
-    "steps": [
-        {
-            "step": 1,
-            "tool": "calculator",
-            "input": "25 * 8",
-            "dependsOn": null
-        }
-    ]
-}
-
-
-Example 2:
+Example:
 
 User:
 "How many messages do I have?"
@@ -100,34 +88,49 @@ Return:
         }
     ]
 }
+11. Use previous tool results when the user refers to information
+    from the previous conversation.
 
+12. Words such as:
+    - it
+    - that
+    - this
+    - the result
+    - previous result
+    - those messages
+    - that number
 
-Example 3:
+    may refer to a previous tool result.
 
-User:
-"Calculate 20% of 500 and tell me today's weather in Delhi"
+13. If the required information already exists in PREVIOUS TOOL RESULTS,
+    do NOT execute the same tool again.
 
-Return:
+14. You may use the previous result directly in a calculator step.
+
+15. If the previous result contains:
+
+{
+    "total": 56
+}
+
+and the user asks:
+
+"Is that greater than 20?"
+
+return:
 
 {
     "steps": [
         {
             "step": 1,
             "tool": "calculator",
-            "input": "20% of 500",
-            "dependsOn": null
-        },
-        {
-            "step": 2,
-            "tool": "weather",
-            "input": "Delhi",
+            "input": "56 > 20",
             "dependsOn": null
         }
     ]
 }
 
-
-Example 4:
+Example:
 
 User:
 "Find how many messages I have and tell me if the number is greater than 20"
@@ -142,15 +145,24 @@ Return:
             "input": "SELECT COUNT(*) AS total FROM messages WHERE user_id = 'bhavna'",
             "dependsOn": null
         },
-{
-    "step": 2,
-    "tool": "calculator",
-    "input": "{{step1.total}} > 20",
-    "dependsOn": 1
-}
+        {
+            "step": 2,
+            "tool": "calculator",
+            "input": "{{step1.total}} > 20",
+            "dependsOn": 1
+        }
     ]
 }
 
+IMPORTANT:
+
+Return ONLY valid JSON.
+
+Do not use markdown.
+
+Do not explain your decision.
+
+Do not add extra text.
 `;
 
         const response = await retry(() =>
@@ -159,14 +171,7 @@ Return:
                 contents: prompt
             })
         );
-        let result = response.text.trim();
 
-        result = result
-            .replace(/^```json\s*/i, "")
-            .replace(/^```\s*/i, "")
-            .replace(/\s*```$/i, "")
-            .trim();
-
-        return result;
+        return response.text.trim();
     }
 }

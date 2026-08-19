@@ -9,6 +9,7 @@ import RAGManager from "../rag/RAGManager.js";
 import ToolExecutor from "./ToolExecutor.js";
 import AgentPlanner from "./AgentPlanner.js";
 import AgentSelfCorrection from "./AgentSelfCorrection.js";
+import DatabaseSchemaTool from "../tools/DatabaseSchemaTool.js";
 
 export default class Agent {
 
@@ -19,10 +20,12 @@ export default class Agent {
         this.memory = new MemoryManager();
         this.toolManager = new ToolManager();
         this.toolExecutor = new ToolExecutor(this.toolManager);
-        this.agentExecutor = new AgentExecutor(this.toolExecutor,this.selfCorrection);
+        this.agentExecutor = new AgentExecutor(this.toolExecutor, this.selfCorrection);
         this.rag = new RAGManager();
         this.planner = new AgentPlanner(ai);
         this.selfCorrection = new AgentSelfCorrection(ai);
+        this.schemaTool = new DatabaseSchemaTool();
+        this.sessionState = new Map();
     }
 
 
@@ -80,23 +83,48 @@ export default class Agent {
             // 5. Get Available Tools
             // ==========================================
 
-            const tools =
-                this.toolManager.getDefinitions();
+            const tools = this.toolManager.getDefinitions();
+            let databaseSchema = null;
 
+            try {
+
+                const schemaResult =
+                    await this.schemaTool.execute();
+
+                if (schemaResult.success) {
+
+                    databaseSchema = schemaResult.schema;
+
+                    console.log(
+                        "🗄️ Database Schema Loaded"
+                    );
+
+                }
+
+            } catch (error) {
+
+                console.log(
+                    "Schema Error:",
+                    error.message
+                );
+            }
 
             // ==========================================
             // 6. Create Agent Plan
             // ==========================================
-
+            const previousState = this.sessionState.get(userId) || {
+                lastResults: []
+            };
             let planResponse = '{"steps":[]}';
 
             try {
 
-                planResponse =
-                    await this.planner.plan(
-                        message,
-                        tools
-                    );
+                planResponse = await this.planner.plan(
+                    message,
+                    tools,
+                    databaseSchema,
+                    previousState.lastResults
+                );
 
             } catch (error) {
 
@@ -164,7 +192,11 @@ export default class Agent {
             if (plan.steps && plan.steps.length > 0) {
 
                 const toolResults = await this.agentExecutor.execute(plan);
-
+                if (toolResults && toolResults.length > 0) {
+                    this.sessionState.set(userId, {
+                        lastResults: toolResults
+                    });
+                }
                 for (let i = 0; i < plan.steps.length; i++) {
 
                     const step = plan.steps[i];

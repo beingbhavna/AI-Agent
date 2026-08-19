@@ -1,9 +1,11 @@
 import mysql from "mysql2/promise";
+import SQLValidator from "./SQLValidator.js";
 
 export default class SQLTool {
 
     constructor() {
         this.connection = null;
+        this.validator = new SQLValidator();
     }
 
     getDefinition() {
@@ -59,6 +61,7 @@ export default class SQLTool {
             }
 
         }
+        return this.validator.validate(sql);
     }
 
     async execute(sql) {
