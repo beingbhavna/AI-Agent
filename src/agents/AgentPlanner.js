@@ -27,6 +27,9 @@ ${JSON.stringify(previousResults, null, 2)}
 DATABASE SCHEMA:
 ${schemaText}
 
+CURRENT USER:
+bhavna
+
 USER REQUEST:
 "${message}"
 
@@ -44,70 +47,153 @@ RULES:
 
 4. Never create a tool that is not present in Available tools.
 
+--------------------------------------------------
+DATABASE RULES
+--------------------------------------------------
+
 5. For database questions:
 
-   - First use "database_schema" if the schema is not already provided.
-   - Then use "sql".
-   - SQL must use ONLY tables and columns that exist in the provided schema.
+   - If DATABASE SCHEMA is "Database schema not available.",
+     first use "database_schema".
+   
+   - If the schema is already available, do NOT call
+     "database_schema" again.
 
-6. SQL rules:
+   - After the schema is available, use "sql" for database queries.
 
-   - ONLY SELECT queries are allowed.
-   - Never generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE or GRANT.
-   - Use the exact table names from the schema.
-   - Use the exact column names from the schema.
+6. SQL must use ONLY tables and columns that exist in the
+   provided DATABASE SCHEMA.
 
-7. For calculations, use "calculator".
+7. Use the exact table names from the schema.
 
-8. For weather questions, use "weather".
+8. Use the exact column names from the schema.
 
-9. For current internet information, use "web_search".
+9. ONLY SELECT queries are allowed.
 
-10. If a later step depends on an earlier step, use:
+10. Never generate:
 
-"dependsOn": <step number>
+    INSERT
+    UPDATE
+    DELETE
+    DROP
+    ALTER
+    CREATE
+    TRUNCATE
+    GRANT
+    REVOKE
 
-and reference values using:
+11. Never access sensitive columns such as:
 
-{{step1.total}}
+    password
+    password_hash
+    token
+    refresh_token
+    secret
+    api_key
 
-Example:
+12. Never query the "users.password" column even if it exists
+    in the database schema.
 
-User:
-"How many messages do I have?"
+--------------------------------------------------
+USER MESSAGE RULES
+--------------------------------------------------
 
-Return:
+13. When the user says:
 
-{
-    "steps": [
-        {
-            "step": 1,
-            "tool": "sql",
-            "input": "SELECT COUNT(*) AS total FROM messages WHERE user_id = 'bhavna'",
-            "dependsOn": null
-        }
-    ]
-}
-11. Use previous tool results when the user refers to information
-    from the previous conversation.
+    "my messages"
+    "my latest messages"
+    "messages I sent"
+    "messages I have sent"
+    "my previous messages"
+    "my last messages"
 
-12. Words such as:
-    - it
-    - that
-    - this
-    - the result
-    - previous result
-    - those messages
-    - that number
+    interpret "my" as the current user:
+
+    user_id = 'bhavna'
+
+14. When the user asks for THEIR messages, filter by:
+
+    user_id = 'bhavna'
+    AND role = 'user'
+
+15. Do NOT include assistant messages when the user asks
+    for "my messages".
+
+16. When the user asks:
+
+    "Show me my latest 5 messages"
+
+    generate:
+
+    SELECT id, role, message, created_at
+    FROM messages
+    WHERE user_id = 'bhavna'
+    AND role = 'user'
+    ORDER BY created_at DESC
+    LIMIT 5;
+
+17. When the user asks:
+
+    "Show me my latest message"
+
+    generate:
+
+    SELECT id, role, message, created_at
+    FROM messages
+    WHERE user_id = 'bhavna'
+    AND role = 'user'
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+18. When the user asks:
+
+    "How many messages have I sent?"
+    "How many messages do I have?"
+    "How many messages did I send?"
+
+    count only the user's messages:
+
+    SELECT COUNT(*) AS total
+    FROM messages
+    WHERE user_id = 'bhavna'
+    AND role = 'user';
+
+19. When the user asks for the latest N messages,
+    use:
+
+    ORDER BY created_at DESC
+    LIMIT N
+
+20. If the user asks for assistant messages specifically,
+    use:
+
+    role = 'assistant'
+
+--------------------------------------------------
+CONVERSATION / PREVIOUS RESULTS
+--------------------------------------------------
+
+21. Use PREVIOUS TOOL RESULTS when the user refers to
+    information from a previous tool result.
+
+22. Words such as:
+
+    it
+    that
+    this
+    the result
+    previous result
+    those messages
+    that number
 
     may refer to a previous tool result.
 
-13. If the required information already exists in PREVIOUS TOOL RESULTS,
-    do NOT execute the same tool again.
+23. If the required information already exists in
+    PREVIOUS TOOL RESULTS, do NOT execute the same tool again.
 
-14. You may use the previous result directly in a calculator step.
+24. You may use a previous result directly in a calculator step.
 
-15. If the previous result contains:
+25. If a previous result contains:
 
 {
     "total": 56
@@ -130,10 +216,16 @@ return:
     ]
 }
 
-Example:
+--------------------------------------------------
+MULTI-STEP QUESTIONS
+--------------------------------------------------
 
-User:
-"Find how many messages I have and tell me if the number is greater than 20"
+26. If the user asks:
+
+"Find how many messages I have and tell me if the number
+is greater than 20"
+
+first execute SQL and then use calculator.
 
 Return:
 
@@ -142,7 +234,7 @@ Return:
         {
             "step": 1,
             "tool": "sql",
-            "input": "SELECT COUNT(*) AS total FROM messages WHERE user_id = 'bhavna'",
+            "input": "SELECT COUNT(*) AS total FROM messages WHERE user_id = 'bhavna' AND role = 'user'",
             "dependsOn": null
         },
         {
@@ -154,7 +246,112 @@ Return:
     ]
 }
 
-IMPORTANT:
+27. If a later step depends on an earlier step, use:
+
+"dependsOn": <step number>
+
+28. Reference previous step values using:
+
+{{step1.total}}
+
+29. Do not invent values for a dependent step.
+
+30. If the required value is not available yet,
+    execute the required tool first.
+
+--------------------------------------------------
+OTHER TOOLS
+--------------------------------------------------
+
+31. For calculations, use "calculator".
+
+32. For weather questions, use "weather".
+
+33. For current internet information, use "web_search".
+
+34. Never use SQL for simple mathematical calculations.
+
+35. Never use the knowledge base as a replacement for
+    database results when the user explicitly asks for
+    database information.
+
+--------------------------------------------------
+SQL GENERATION EXAMPLES
+--------------------------------------------------
+
+USER:
+"Show me my latest 5 messages"
+
+RETURN:
+
+{
+    "steps": [
+        {
+            "step": 1,
+            "tool": "sql",
+            "input": "SELECT id, role, message, created_at FROM messages WHERE user_id = 'bhavna' AND role = 'user' ORDER BY created_at DESC LIMIT 5",
+            "dependsOn": null
+        }
+    ]
+}
+
+USER:
+"How many messages do I have?"
+
+RETURN:
+
+{
+    "steps": [
+        {
+            "step": 1,
+            "tool": "sql",
+            "input": "SELECT COUNT(*) AS total FROM messages WHERE user_id = 'bhavna' AND role = 'user'",
+            "dependsOn": null
+        }
+    ]
+}
+
+USER:
+"What was my latest message?"
+
+RETURN:
+
+{
+    "steps": [
+        {
+            "step": 1,
+            "tool": "sql",
+            "input": "SELECT message, created_at FROM messages WHERE user_id = 'bhavna' AND role = 'user' ORDER BY created_at DESC LIMIT 1",
+            "dependsOn": null
+        }
+    ]
+}
+
+USER:
+"Find how many messages I have and tell me if the number is greater than 20"
+
+RETURN:
+
+{
+    "steps": [
+        {
+            "step": 1,
+            "tool": "sql",
+            "input": "SELECT COUNT(*) AS total FROM messages WHERE user_id = 'bhavna' AND role = 'user'",
+            "dependsOn": null
+        },
+        {
+            "step": 2,
+            "tool": "calculator",
+            "input": "{{step1.total}} > 20",
+            "dependsOn": 1
+        }
+    ]
+}
+
+--------------------------------------------------
+IMPORTANT
+--------------------------------------------------
 
 Return ONLY valid JSON.
 

@@ -19,17 +19,19 @@ export default class Agent {
         this.memory = new MemoryManager();
 
         this.toolManager = new ToolManager();
+
         this.toolExecutor = new ToolExecutor(
             this.toolManager
         );
-        // Kept because your existing project may use it elsewhere.
-        this.toolSelector = new ToolSelector(ai);
 
+        this.toolSelector = new ToolSelector(ai);
 
         this.agentExecutor = new AgentExecutor(
             this.toolExecutor
         );
+
         this.planner = new AgentPlanner(ai);
+
         this.rag = new RAGManager();
     }
 
@@ -139,7 +141,7 @@ export default class Agent {
 
 
             // =================================================
-            // 6. Create Agent Plan
+            // 6. Create Initial Agent Plan
             // =================================================
 
             let planResponse =
@@ -210,7 +212,163 @@ export default class Agent {
 
 
             // =================================================
-            // 9. Execute Complete Plan
+            // 9. DATABASE WORKFLOW FIX
+            // =================================================
+            //
+            // If planner only returned database_schema,
+            // execute schema first and then generate the
+            // actual SQL query.
+            //
+            // This fixes:
+            //
+            // User:
+            // "How many messages do I have?"
+            //
+            // Planner:
+            // database_schema
+            //
+            // Without this block the SQL query never executes.
+            // =================================================
+
+            const hasDatabaseSchemaStep =
+                plan.steps.some(
+                    step =>
+                        step.tool === "database_schema"
+                );
+
+            const hasSqlStep =
+                plan.steps.some(
+                    step =>
+                        step.tool === "sql"
+                );
+
+
+            if (
+                hasDatabaseSchemaStep &&
+                !hasSqlStep
+            ) {
+
+                console.log(
+                    "🗄️ Database schema required before SQL."
+                );
+
+
+                // ---------------------------------------------
+                // Execute schema step first
+                // ---------------------------------------------
+
+                let schemaResults = [];
+
+                try {
+
+                    schemaResults =
+                        await this.agentExecutor.execute({
+                            steps: plan.steps.filter(
+                                step =>
+                                    step.tool ===
+                                    "database_schema"
+                            )
+                        });
+
+                } catch (error) {
+
+                    console.log(
+                        "❌ Schema Execution Error:",
+                        error.message
+                    );
+
+                    schemaResults = [];
+                }
+
+
+                console.log(
+                    "🧪 SCHEMA RESULTS:",
+                    JSON.stringify(
+                        schemaResults,
+                        null,
+                        2
+                    )
+                );
+
+
+                // ---------------------------------------------
+                // Extract schema
+                // ---------------------------------------------
+
+                const schemaResult =
+                    schemaResults.find(
+                        item =>
+                            item.tool ===
+                            "database_schema"
+                    );
+
+
+                const schema =
+                    schemaResult?.result?.schema || [];
+
+
+                // ---------------------------------------------
+                // Generate SQL from schema + question
+                // ---------------------------------------------
+
+                const generatedSql =
+                    await this.generateSQLFromSchema(
+                        message,
+                        userId,
+                        schema
+                    );
+
+
+                if (generatedSql) {
+
+                    plan = {
+                        steps: [
+                            ...plan.steps.filter(
+                                step =>
+                                    step.tool !==
+                                    "database_schema"
+                            ),
+                            {
+                                step: 1,
+                                tool: "sql",
+                                input: generatedSql,
+                                dependsOn: null
+                            }
+                        ]
+                    };
+
+                } else {
+
+                    // If SQL could not be generated,
+                    // keep schema result for final response.
+
+                    plan = {
+                        steps: []
+                    };
+
+                    // Preserve schema result
+                    // so final AI knows what happened.
+                    schemaResults.forEach(
+                        result => {
+                            if (
+                                !result.tool ||
+                                result.tool !==
+                                "database_schema"
+                            ) {
+                                return;
+                            }
+                        }
+                    );
+
+                    // Store separately for final prompt
+                    this.lastSchemaResults =
+                        schemaResults;
+                }
+            }
+
+
+            // =================================================
+            // 10. Execute Final Plan
             // =================================================
 
             let toolResults = [];
@@ -234,8 +392,28 @@ export default class Agent {
                     toolResults = [];
                 }
             }
+
+
             // =================================================
-            // 11. Conversation History
+            // 11. Add Schema Results If SQL Was Generated
+            // =================================================
+
+            if (
+                this.lastSchemaResults &&
+                this.lastSchemaResults.length > 0
+            ) {
+
+                toolResults = [
+                    ...this.lastSchemaResults,
+                    ...toolResults
+                ];
+
+                this.lastSchemaResults = [];
+            }
+
+
+            // =================================================
+            // 12. Conversation History
             // =================================================
 
             const historyText =
@@ -247,7 +425,7 @@ export default class Agent {
 
 
             // =================================================
-            // 12. Prepare Tool Results For AI
+            // 13. Prepare Tool Results
             // =================================================
 
             const toolResultsText =
@@ -263,7 +441,9 @@ ${item.tool}
 
 Input:
 ${typeof item.input === "object"
-                                    ? JSON.stringify(item.input)
+                                    ? JSON.stringify(
+                                        item.input
+                                    )
                                     : item.input}
 
 Result:
@@ -275,12 +455,24 @@ ${JSON.stringify(
 `;
 
                         })
-                        .join("\n----------------------\n")
+                        .join(
+                            "\n----------------------\n"
+                        )
                     : "No tools were executed.";
 
 
+            console.log(
+                "🧪 FINAL TOOL RESULTS:",
+                JSON.stringify(
+                    toolResults,
+                    null,
+                    2
+                )
+            );
+
+
             // =================================================
-            // 13. FINAL AI PROMPT
+            // 14. FINAL AI PROMPT
             // =================================================
 
             const finalPrompt = `
@@ -307,7 +499,7 @@ Instructions:
 
 2. If multiple tools were executed, combine their results logically.
 
-3. If one tool depends on a previous tool, use the resolved result from the later tool result.
+3. If one tool depends on another tool, use the resolved result.
 
 4. Never invent numbers or information.
 
@@ -335,25 +527,27 @@ Instructions:
 
 16. Do not make up information that is not present in the tool results or knowledge base.
 
-17. If the user's question is a normal conversational question and no tool result is needed, answer naturally.
+17. If the user asks for database information and SQL returned a result, answer directly using that SQL result.
 
 18. Keep the final answer clear and concise.
 
-Return ONLY the answer to the user.
+19. For a message-count question, if SQL returns:
+{
+    "rows": [
+        {
+            "total": X
+        }
+    ]
+}
+then answer:
+"You have a total of X messages in your history."
+
+20. Return ONLY the answer to the user.
 `;
 
 
-            // console.log(
-            //     "🧠 FINAL PROMPT:"
-            // );
-
-            // console.log(
-            //     finalPrompt
-            // );
-
-
             // =================================================
-            // 14. Generate Final Answer
+            // 15. Generate Final Answer
             // =================================================
 
             const response =
@@ -371,7 +565,7 @@ Return ONLY the answer to the user.
 
 
             // =================================================
-            // 15. Add Sources
+            // 16. Add Sources
             // =================================================
 
             if (
@@ -383,8 +577,7 @@ Return ONLY the answer to the user.
                 answer +=
                     "\n\n📚 Sources:\n";
 
-                const uniqueSources =
-                    [];
+                const uniqueSources = [];
 
                 for (
                     const source
@@ -414,7 +607,7 @@ Return ONLY the answer to the user.
 
 
             // =================================================
-            // 16. Save Assistant Response
+            // 17. Save Assistant Response
             // =================================================
 
             await this.memory.addMessage(
@@ -430,7 +623,7 @@ Return ONLY the answer to the user.
 
 
             // =================================================
-            // 17. Return Answer
+            // 18. Return Answer
             // =================================================
 
             return answer;
@@ -463,6 +656,201 @@ Return ONLY the answer to the user.
             }
 
             return fallback;
+        }
+    }
+
+
+    // =========================================================
+    // GENERATE SQL FROM DATABASE SCHEMA
+    // =========================================================
+
+    async generateSQLFromSchema(
+        message,
+        userId,
+        schema
+    ) {
+
+        try {
+
+            if (
+                !schema ||
+                !Array.isArray(schema) ||
+                schema.length === 0
+            ) {
+
+                console.log(
+                    "❌ No database schema available."
+                );
+
+                return null;
+            }
+
+
+            const schemaText =
+                schema
+                    .map(table => {
+
+                        const columns =
+                            (table.columns || [])
+                                .map(
+                                    column =>
+                                        `${column.COLUMN_NAME} ${column.DATA_TYPE}`
+                                )
+                                .join(", ");
+
+                        return `TABLE ${table.table} (${columns})`;
+
+                    })
+                    .join("\n");
+
+
+            const sqlPrompt = `
+
+You are a SQL query generator.
+
+User question:
+${message}
+
+Current user ID:
+${userId}
+
+Database schema:
+${schemaText}
+
+Generate ONE safe SELECT SQL query that answers the user's question.
+
+Rules:
+
+1. Only generate SELECT queries.
+
+2. Never generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE, GRANT or REVOKE.
+
+3. Use only tables and columns that exist in the supplied schema.
+
+4. For questions about the user's messages, use:
+messages.user_id = '${userId}'
+
+5. For "How many messages do I have?", generate:
+SELECT COUNT(*) AS total FROM messages WHERE user_id = '${userId}'
+
+6. Do not query sensitive columns such as password.
+
+7. Return ONLY the SQL query.
+
+`;
+
+
+            const response =
+                await retry(() =>
+                    this.ai.models.generateContent({
+                        model: MODEL,
+                        contents: sqlPrompt
+                    })
+                );
+
+
+            let sql =
+                response.text?.trim() || "";
+
+
+            // Remove markdown SQL fences
+            sql =
+                sql.replace(
+                    /^```sql\s*/i,
+                    ""
+                );
+
+            sql =
+                sql.replace(
+                    /^```\s*/i,
+                    ""
+                );
+
+            sql =
+                sql.replace(
+                    /```$/i,
+                    ""
+                );
+
+
+            sql =
+                sql.trim();
+
+
+            console.log(
+                "🧠 Generated SQL:",
+                sql
+            );
+
+
+            // =================================================
+            // Safety Check
+            // =================================================
+
+            if (
+                !sql ||
+                !sql.toLowerCase().startsWith(
+                    "select"
+                )
+            ) {
+
+                console.log(
+                    "❌ Generated SQL is not a SELECT query."
+                );
+
+                return null;
+            }
+
+
+            // Block dangerous SQL
+            const blockedKeywords = [
+                "insert",
+                "update",
+                "delete",
+                "drop",
+                "truncate",
+                "alter",
+                "create",
+                "grant",
+                "revoke"
+            ];
+
+
+            const lowerSql = sql.toLowerCase();
+            for (const keyword of blockedKeywords) {
+                const regex = new RegExp(`\\b${keyword}\\b`, "i");
+                if (regex.test(sql)) {
+                    console.log(
+                        `❌ Dangerous SQL keyword detected: ${keyword}`
+                    );
+                    return null;
+                }
+            }
+
+
+            // Never allow password column
+            if (
+                /\bpassword\b/i.test(sql)
+            ) {
+
+                console.log(
+                    "❌ Sensitive password column detected."
+                );
+
+                return null;
+            }
+
+
+            return sql;
+
+        } catch (error) {
+
+            console.log(
+                "❌ SQL Generation Error:",
+                error.message
+            );
+
+            return null;
         }
     }
 
