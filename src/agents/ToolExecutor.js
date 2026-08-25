@@ -4,7 +4,7 @@ export default class ToolExecutor {
         this.toolManager = toolManager;
     }
 
-    async execute(toolName, input) {
+    async execute(toolName, input,userId) {
 
         const tool = this.toolManager.getTool(toolName);
 
@@ -19,7 +19,7 @@ export default class ToolExecutor {
 
             const result = await Promise.race([
 
-                tool.execute(input),
+                tool.execute(input,userId),
 
                 new Promise((_, reject) =>
                     setTimeout(

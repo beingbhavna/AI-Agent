@@ -10,28 +10,15 @@ import AgentPlanner from "./AgentPlanner.js";
 import AgentExecutor from "./AgentExecutor.js";
 
 export default class Agent {
-
     constructor(ai) {
-
         this.ai = ai;
-
         this.promptManager = new PromptManager();
         this.memory = new MemoryManager();
-
         this.toolManager = new ToolManager();
-
-        this.toolExecutor = new ToolExecutor(
-            this.toolManager
-        );
-
+        this.toolExecutor = new ToolExecutor(this.toolManager);
         this.toolSelector = new ToolSelector(ai);
-
-        this.agentExecutor = new AgentExecutor(
-            this.toolExecutor
-        );
-
+        this.agentExecutor = new AgentExecutor(this.toolExecutor);
         this.planner = new AgentPlanner(ai);
-
         this.rag = new RAGManager();
     }
 
@@ -41,61 +28,33 @@ export default class Agent {
     // =========================================================
 
     async init() {
-
         try {
-
             await this.rag.init();
-
             console.log("🤖 Agent Initialized");
-
         } catch (error) {
-
             console.log(
                 "❌ Agent Initialization Error:",
                 error.message
             );
-
             throw error;
         }
     }
 
-
-    // =========================================================
-    // CHAT
-    // =========================================================
-
     async chat(userId, message) {
-
         try {
-
             // =================================================
             // 1. Initialize RAG
             // =================================================
-
             await this.rag.init();
-
-
             // =================================================
             // 2. Save User Message
             // =================================================
 
-            await this.memory.addMessage(
-                userId,
-                "user",
-                message
-            );
-
-
+            await this.memory.addMessage(userId, "user", message);
             // =================================================
             // 3. Load Conversation History
             // =================================================
-
-            const history =
-                await this.memory.getConversation(
-                    userId
-                );
-
-
+            const history = await this.memory.getConversation(userId);
             // =================================================
             // 4. Search Knowledge Base
             // =================================================
@@ -104,113 +63,50 @@ export default class Agent {
             let sources = [];
 
             try {
+                const ragResult = await this.rag.search(userId, message);
+                context = ragResult?.context || "";
 
-                const ragResult =
-                    await this.rag.search(
-                        userId,
-                        message
-                    );
-
-                context =
-                    ragResult?.context || "";
-
-                sources =
-                    ragResult?.sources || [];
+                sources = ragResult?.sources || [];
 
             } catch (error) {
-
-                console.log(
-                    "RAG Error:",
-                    error.message
-                );
+                console.log("RAG Error:", error.message);
             }
-
-
-            console.log(
-                "RAG Context:",
-                context
-            );
-
-
+            console.log("RAG Context:", context);
             // =================================================
             // 5. Get Available Tools
             // =================================================
-
-            const tools =
-                this.toolManager.getDefinitions();
-
-
+            const tools = this.toolManager.getDefinitions();
             // =================================================
             // 6. Create Initial Agent Plan
             // =================================================
 
-            let planResponse =
-                '{"steps":[]}';
-
+            let planResponse = '{"steps":[]}';
             try {
-
-                planResponse =
-                    await this.planner.plan(
-                        message,
-                        tools
-                    );
-
+                planResponse = await this.planner.plan(message, tools);
             } catch (error) {
-
-                console.log(
-                    "Planner Error:",
-                    error.message
-                );
+                console.log("Planner Error:", error.message);
             }
-
-
-            console.log(
-                "🧠 Agent Plan:",
-                planResponse
-            );
-
-
+            console.log("🧠 Agent Plan:", planResponse);
             // =================================================
             // 7. Parse Planner Response
             // =================================================
-
             let plan;
-
             try {
-
-                plan =
-                    this.parsePlannerResponse(
-                        planResponse
-                    );
-
+                plan = this.parsePlannerResponse(planResponse);
             } catch (error) {
-
-                console.log(
-                    "❌ Planner JSON Error:",
-                    error.message
-                );
-
+                console.log("❌ Planner JSON Error:", error.message);
                 plan = {
                     steps: []
                 };
             }
-
-
             // =================================================
             // 8. Validate Plan
             // =================================================
-
-            if (
-                !plan ||
-                !Array.isArray(plan.steps)
-            ) {
-
+            if (!plan || !Array.isArray(plan.steps)) {
                 plan = {
                     steps: []
                 };
             }
-
-
             // =================================================
             // 9. DATABASE WORKFLOW FIX
             // =================================================
@@ -229,68 +125,24 @@ export default class Agent {
             //
             // Without this block the SQL query never executes.
             // =================================================
+            const hasDatabaseSchemaStep = plan.steps.some(step => step.tool === "database_schema");
 
-            const hasDatabaseSchemaStep =
-                plan.steps.some(
-                    step =>
-                        step.tool === "database_schema"
-                );
-
-            const hasSqlStep =
-                plan.steps.some(
-                    step =>
-                        step.tool === "sql"
-                );
-
-
-            if (
-                hasDatabaseSchemaStep &&
-                !hasSqlStep
-            ) {
-
-                console.log(
-                    "🗄️ Database schema required before SQL."
-                );
-
-
+            const hasSqlStep = plan.steps.some(step => step.tool === "sql");
+            if (hasDatabaseSchemaStep && !hasSqlStep) {
+                console.log("🗄️ Database schema required before SQL.");
                 // ---------------------------------------------
                 // Execute schema step first
                 // ---------------------------------------------
-
                 let schemaResults = [];
-
                 try {
-
-                    schemaResults =
-                        await this.agentExecutor.execute({
-                            steps: plan.steps.filter(
-                                step =>
-                                    step.tool ===
-                                    "database_schema"
-                            )
-                        });
-
+                    schemaResults = await this.agentExecutor.execute({
+                        steps: plan.steps.filter(step => step.tool === "database_schema")
+                    });
                 } catch (error) {
-
-                    console.log(
-                        "❌ Schema Execution Error:",
-                        error.message
-                    );
-
+                    console.log("❌ Schema Execution Error:", error.message);
                     schemaResults = [];
                 }
-
-
-                console.log(
-                    "🧪 SCHEMA RESULTS:",
-                    JSON.stringify(
-                        schemaResults,
-                        null,
-                        2
-                    )
-                );
-
-
+                console.log("🧪 SCHEMA RESULTS:", JSON.stringify(schemaResults, null, 2));
                 // ---------------------------------------------
                 // Extract schema
                 // ---------------------------------------------
@@ -376,12 +228,7 @@ export default class Agent {
             if (plan.steps.length > 0) {
 
                 try {
-
-                    toolResults =
-                        await this.agentExecutor.execute(
-                            plan
-                        );
-
+                    toolResults = await this.agentExecutor.execute(plan, userId);
                 } catch (error) {
 
                     console.log(

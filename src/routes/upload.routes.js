@@ -28,7 +28,17 @@ const upload = multer({ storage });
 router.post("/upload", upload.single("pdf"), async (req, res) => {
 
     try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "PDF file is required"
+            });
+        }
+        const userId = req.body.userId || "bhavna";
 
+        console.log("📄 Upload started");
+        console.log("📁 File:", req.file.originalname);
+        console.log("👤 User:", userId);
         // Read PDF
         const text = await loader.load(req.file.path);
 
@@ -44,7 +54,7 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
                 {
                     userId: req.body.userId || "bhavna",
                     fileName: req.file.originalname,
-                    chunk: i + 1,
+                    chunk: i,
                     uploadedAt: new Date().toISOString()
                 }
             );
@@ -56,6 +66,7 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
             message: "PDF Indexed Successfully"
         });
     } catch (error) {
+        console.error("❌ PDF Upload Failed:", error);
         res.status(500).json({
             success: false,
             error: error.message

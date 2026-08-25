@@ -274,7 +274,11 @@ OTHER TOOLS
 35. Never use the knowledge base as a replacement for
     database results when the user explicitly asks for
     database information.
+36. For document questions:
 
+- If the user refers to an uploaded document, file, PDF, report, document name, or asks to summarize/extract information from a document, use "document_search".
+- Do NOT use "web_search" for an uploaded/local document.
+- Use "web_search" only when the user explicitly asks for internet/current information.
 --------------------------------------------------
 SQL GENERATION EXAMPLES
 --------------------------------------------------

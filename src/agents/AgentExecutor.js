@@ -3,6 +3,7 @@ import { logTool } from "../utils/logger.js";
 export default class AgentExecutor {
 
     constructor(toolExecutor) {
+
         if (!toolExecutor) {
             throw new Error("ToolExecutor is required");
         }
@@ -16,7 +17,8 @@ export default class AgentExecutor {
         this.toolExecutor = toolExecutor;
     }
 
-    async execute(plan) {
+
+    async execute(plan, userId) {
 
         const results = [];
 
@@ -34,6 +36,7 @@ export default class AgentExecutor {
 
             let input = step.input ?? "";
 
+
             // ==========================================
             // Resolve dependency
             // ==========================================
@@ -48,9 +51,10 @@ export default class AgentExecutor {
 
                     const previousResult = previousStep.result;
 
-                    // ----------------------------------
-                    // SQL result
-                    // ----------------------------------
+
+                    // ==========================================
+                    // SQL rows result
+                    // ==========================================
 
                     if (
                         previousResult &&
@@ -72,9 +76,10 @@ export default class AgentExecutor {
                         }
                     }
 
-                    // ----------------------------------
+
+                    // ==========================================
                     // Direct result
-                    // ----------------------------------
+                    // ==========================================
 
                     else if (
                         previousResult !== undefined &&
@@ -92,6 +97,11 @@ export default class AgentExecutor {
                 }
             }
 
+
+            // ==========================================
+            // Execute Tool
+            // ==========================================
+
             console.log(
                 `🔧 Executing Tool: ${step.tool}`
             );
@@ -101,19 +111,22 @@ export default class AgentExecutor {
                 input
             );
 
+            console.log(
+                `👤 User:`,
+                userId
+            );
+
+
             let result;
 
             try {
 
                 result = await this.toolExecutor.execute(
                     step.tool,
-                    input
+                    input,
+                    userId
                 );
 
-                // console.log(
-                //     `📤 Result:`,
-                //     result
-                // );
 
                 logTool(
                     step.tool,
@@ -134,6 +147,11 @@ export default class AgentExecutor {
                 };
             }
 
+
+            // ==========================================
+            // Store Result
+            // ==========================================
+
             results.push({
                 step: step.step ?? i + 1,
                 tool: step.tool,
@@ -141,6 +159,7 @@ export default class AgentExecutor {
                 result
             });
         }
+
 
         return results;
     }

@@ -4,10 +4,11 @@ import DatabaseTool from "./ConversationCountTool.js";
 import WebSearchTool from "./WebSearchTool.js";
 import SQLTool from "./SQLTool.js";
 import DatabaseSchemaTool from "./DatabaseSchemaTool.js";
+import DocumentSearchTool from "./DocumentSearchTool.js";
 export default class ToolManager {
 
     constructor() {
-        this.tools = [new CalculatorTool(), new WeatherTool(), new DatabaseTool(), new WebSearchTool(), new SQLTool(), new DatabaseSchemaTool()];
+        this.tools = [new CalculatorTool(), new WeatherTool(), new DatabaseTool(), new WebSearchTool(), new SQLTool(), new DatabaseSchemaTool(),new DocumentSearchTool()];
     }
 
     getDefinitions() {

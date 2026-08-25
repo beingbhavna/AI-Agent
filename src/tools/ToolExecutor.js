@@ -4,7 +4,7 @@ export default class ToolExecutor {
         this.toolManager = toolManager;
     }
 
-    async execute(toolName, input) {
+    async execute(toolName, input, userId) {
 
         const tool = this.toolManager.getTool(toolName);
 
@@ -12,6 +12,10 @@ export default class ToolExecutor {
             throw new Error(`Tool ${toolName} not found`);
         }
 
-        return await tool.execute(input);
+        console.log("🔧 Tool:", toolName);
+        console.log("📥 Input:", input);
+        console.log("👤 User:", userId);
+
+        return await tool.execute(input, userId);
     }
 }
