@@ -1,4 +1,6 @@
 import { logTool } from "../utils/logger.js";
+import RAGContextBuilder from "../rag/RAGContextBuilder.js";
+import RAGPromptBuilder from "../rag/RAGPromptBuilder.js";
 
 export default class AgentExecutor {
 
@@ -15,16 +17,38 @@ export default class AgentExecutor {
         }
 
         this.toolExecutor = toolExecutor;
+
+        // ==========================================
+        // RAG Components
+        // ==========================================
+
+        this.ragContextBuilder = new RAGContextBuilder();
+        this.ragPromptBuilder = new RAGPromptBuilder();
     }
 
 
-    async execute(plan, userId) {
+    async execute(plan, userId, originalQuestion) {
 
         const results = [];
 
+
+        // ==========================================
+        // Validate Plan
+        // ==========================================
+
         if (!plan || !Array.isArray(plan.steps)) {
-            return results;
+
+            return {
+                results: [],
+                ragContext: "",
+                finalPrompt: ""
+            };
         }
+
+
+        // ==========================================
+        // Execute Plan Steps
+        // ==========================================
 
         for (let i = 0; i < plan.steps.length; i++) {
 
@@ -34,11 +58,12 @@ export default class AgentExecutor {
                 continue;
             }
 
+
             let input = step.input ?? "";
 
 
             // ==========================================
-            // Resolve dependency
+            // Resolve Dependency
             // ==========================================
 
             if (step.dependsOn) {
@@ -47,14 +72,16 @@ export default class AgentExecutor {
                     item => item.step === step.dependsOn
                 );
 
+
                 if (previousStep) {
 
-                    const previousResult = previousStep.result;
+                    const previousResult =
+                        previousStep.result;
 
 
-                    // ==========================================
-                    // SQL rows result
-                    // ==========================================
+                    // ======================================
+                    // SQL Rows Result
+                    // ======================================
 
                     if (
                         previousResult &&
@@ -62,12 +89,17 @@ export default class AgentExecutor {
                         previousResult.rows.length > 0
                     ) {
 
-                        const row = previousResult.rows[0];
+                        const row =
+                            previousResult.rows[0];
 
-                        for (const key of Object.keys(row)) {
+
+                        for (
+                            const key of Object.keys(row)
+                        ) {
 
                             const placeholder =
                                 `{{step${step.dependsOn}.${key}}}`;
+
 
                             input = input.replace(
                                 placeholder,
@@ -77,9 +109,9 @@ export default class AgentExecutor {
                     }
 
 
-                    // ==========================================
-                    // Direct result
-                    // ==========================================
+                    // ======================================
+                    // Direct Result
+                    // ======================================
 
                     else if (
                         previousResult !== undefined &&
@@ -88,6 +120,7 @@ export default class AgentExecutor {
 
                         const placeholder =
                             `{{step${step.dependsOn}.result}}`;
+
 
                         input = input.replace(
                             placeholder,
@@ -119,14 +152,20 @@ export default class AgentExecutor {
 
             let result;
 
+
             try {
 
-                result = await this.toolExecutor.execute(
-                    step.tool,
-                    input,
-                    userId
-                );
+                result =
+                    await this.toolExecutor.execute(
+                        step.tool,
+                        input,
+                        userId
+                    );
 
+
+                // ======================================
+                // Tool Logging
+                // ======================================
 
                 logTool(
                     step.tool,
@@ -136,10 +175,11 @@ export default class AgentExecutor {
 
             } catch (error) {
 
-                console.log(
+                console.error(
                     `❌ Tool Error (${step.tool}):`,
                     error.message
                 );
+
 
                 result = {
                     success: false,
@@ -149,18 +189,128 @@ export default class AgentExecutor {
 
 
             // ==========================================
-            // Store Result
+            // Store Tool Result
             // ==========================================
 
             results.push({
+
                 step: step.step ?? i + 1,
+
                 tool: step.tool,
+
                 input,
+
                 result
             });
         }
 
 
-        return results;
+        // =====================================================
+        // RAG PROCESSING
+        // =====================================================
+
+        console.log(
+            "🧠 Starting RAG processing..."
+        );
+
+
+        // ==========================================
+        // Collect document_search results
+        // ==========================================
+
+        const documentResults = results
+            .filter(item => {
+
+                return (
+                    item.tool === "document_search" &&
+                    item.result?.success === true
+                );
+
+            })
+            .flatMap(item => {
+
+                return item.result?.documents || [];
+
+            });
+
+
+        console.log(
+            `📚 RAG Documents Found: ${documentResults.length}`
+        );
+
+
+        // ==========================================
+        // Build RAG Context
+        // ==========================================
+
+        let ragContext = "";
+
+
+        if (documentResults.length > 0) {
+
+            ragContext =
+                this.ragContextBuilder.build({
+                    documents: documentResults
+                });
+
+        }
+
+
+        console.log(
+            "📖 RAG Context:"
+        );
+
+        console.log(
+            ragContext || "No relevant document context found."
+        );
+
+
+        // ==========================================
+        // Build Final Prompt
+        // ==========================================
+
+        let finalPrompt = "";
+
+
+        if (ragContext) {
+
+            finalPrompt =
+                this.ragPromptBuilder.build(
+                    originalQuestion || "",
+                    ragContext
+                );
+
+        } else {
+
+            // No document context available.
+            // Still create a prompt so the caller
+            // knows that document information was
+            // not found.
+
+            finalPrompt = this.ragPromptBuilder.build(
+                    originalQuestion || "",
+                    ""
+                );
+        }
+
+
+        console.log(
+            "📝 Final RAG Prompt Created"
+        );
+
+
+        // ==========================================
+        // Return Execution + RAG Result
+        // ==========================================
+
+        return {
+
+            results,
+
+            ragContext,
+
+            finalPrompt
+
+        };
     }
 }

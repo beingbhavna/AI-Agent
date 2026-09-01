@@ -17,55 +17,166 @@ export default class DocumentIngestionService {
 
         console.log("📄 Starting document ingestion...");
         console.log("📁 File:", filePath);
+        console.log("📄 File Name:", fileName);
         console.log("👤 User:", userId);
 
-        // 1. Extract PDF text
-        const text = await this.loader.load(filePath);
+        try {
 
-        console.log(`📖 Extracted ${text.length} characters`);
+            // ==========================================
+            // 1. Extract PDF text
+            // ==========================================
 
-        // 2. Split text
-        const chunks = this.splitter.split(text);
+            const text =
+                await this.loader.load(filePath);
 
-        console.log(`✂️ Created ${chunks.length} chunks`);
+            if (!text || !text.trim()) {
 
-        // 3. Create embeddings and store in Chroma
-        for (let i = 0; i < chunks.length; i++) {
+                throw new Error(
+                    "No text could be extracted from the document."
+                );
 
-            const chunk = chunks[i];
+            }
 
             console.log(
-                `🧠 Creating embedding ${i + 1}/${chunks.length}`
+                `📖 Extracted ${text.length} characters`
             );
 
-            const embedding = await this.embedder.create(chunk);
 
-            await this.chroma.addDocument(
-                randomUUID(),
-                embedding,
-                chunk,
-                {
-                    userId,
-                    fileName,
-                    chunkIndex: i,
-                    uploadedAt: new Date().toISOString()
+            // ==========================================
+            // 2. Split text into chunks
+            // ==========================================
+
+            const chunks =
+                await this.splitter.split(text);
+
+            if (!Array.isArray(chunks) || chunks.length === 0) {
+
+                throw new Error(
+                    "Document was extracted but no chunks were created."
+                );
+
+            }
+
+            console.log(
+                `✂️ Created ${chunks.length} chunks`
+            );
+
+
+            // ==========================================
+            // 3. Initialize Chroma
+            // ==========================================
+
+            await this.chroma.init();
+
+            console.log(
+                "🗄️ Chroma ready for document storage"
+            );
+
+
+            // ==========================================
+            // 4. Create embeddings and store chunks
+            // ==========================================
+
+            for (let i = 0; i < chunks.length; i++) {
+
+                const chunk = chunks[i];
+
+                console.log(
+                    `🧠 Creating embedding ${i + 1}/${chunks.length}`
+                );
+
+                const embedding =
+                    await this.embedder.create(chunk);
+
+                if (
+                    !embedding ||
+                    !Array.isArray(embedding) ||
+                    embedding.length === 0
+                ) {
+
+                    throw new Error(
+                        `Invalid embedding generated for chunk ${i + 1}`
+                    );
+
                 }
-            );
+
+                console.log(
+                    `📏 Embedding dimensions: ${embedding.length}`
+                );
+
+
+                // ======================================
+                // Store in Chroma
+                // ======================================
+
+                await this.chroma.addDocument(
+
+                    randomUUID(),
+
+                    embedding,
+
+                    chunk,
+
+                    {
+                        userId: userId,
+
+                        fileName: fileName,
+
+                        chunk: i + 1,
+
+                        uploadedAt:
+                            new Date().toISOString()
+                    }
+
+                );
+
+                console.log(
+                    `💾 Stored chunk ${i + 1}/${chunks.length}`
+                );
+            }
+
+
+            // ==========================================
+            // 5. Completed
+            // ==========================================
 
             console.log(
-                `💾 Stored chunk ${i + 1}/${chunks.length}`
+                `✅ Document ingestion completed. ${chunks.length} chunks stored.`
             );
+
+
+            return {
+
+                success: true,
+
+                fileName,
+
+                userId,
+
+                chunks: chunks.length
+
+            };
+
+        } catch (error) {
+
+            console.error(
+                "❌ Document ingestion failed:",
+                error.message
+            );
+
+            return {
+
+                success: false,
+
+                fileName,
+
+                userId,
+
+                chunks: 0,
+
+                error: error.message
+
+            };
         }
-
-        console.log(
-            `✅ Document ingestion completed. ${chunks.length} chunks stored.`
-        );
-
-        return {
-            success: true,
-            fileName,
-            userId,
-            chunks: chunks.length
-        };
     }
 }

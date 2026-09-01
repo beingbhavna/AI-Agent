@@ -1,40 +1,87 @@
 export default class ToolExecutor {
 
     constructor(toolManager) {
+
         this.toolManager = toolManager;
+
     }
 
-    async execute(toolName, input,userId) {
 
-        const tool = this.toolManager.getTool(toolName);
+    async execute(
+        toolName,
+        input,
+        userId
+    ) {
+
+        const tool =
+            this.toolManager.getTool(
+                toolName
+            );
+
 
         if (!tool) {
-            throw new Error(`Tool '${toolName}' not found`);
+
+            throw new Error(
+                `Tool '${toolName}' not found`
+            );
+
         }
 
-        console.log(`🔧 Tool: ${toolName}`);
-        console.log(`📥 Input: ${input}`);
+
+        console.log(
+            `🔧 Tool: ${toolName}`
+        );
+
+
+        console.log(
+            "📥 Input:",
+            typeof input === "object"
+                ? JSON.stringify(input, null, 2)
+                : input
+        );
+
+
+        console.log(
+            `👤 User: ${userId}`
+        );
+
 
         try {
 
-            const result = await Promise.race([
+            const result =
+                await Promise.race([
 
-                tool.execute(input,userId),
+                    tool.execute(
+                        input,
+                        userId
+                    ),
 
-                new Promise((_, reject) =>
-                    setTimeout(
-                        () => reject(
-                            new Error("Tool execution timeout")
-                        ),
-                        15000
+                    new Promise(
+                        (_, reject) => {
+
+                            setTimeout(
+                                () => reject(
+                                    new Error(
+                                        "Tool execution timeout"
+                                    )
+                                ),
+                                15000
+                            );
+
+                        }
                     )
-                )
 
-            ]);
+                ]);
 
-            console.log("📤 Result:", result);
+
+            console.log(
+                "📤 Result:",
+                result
+            );
+
 
             return result;
+
 
         } catch (error) {
 
@@ -43,9 +90,14 @@ export default class ToolExecutor {
                 error.message
             );
 
+
             return {
+
                 success: false,
-                error: error.message
+
+                error:
+                    error.message
+
             };
         }
     }

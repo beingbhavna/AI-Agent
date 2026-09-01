@@ -229,6 +229,7 @@ export default class Agent {
 
                 try {
                     toolResults = await this.agentExecutor.execute(plan, userId);
+                    console.log("🧪 TOOL EXECUTION RESULTS:", JSON.stringify(toolResults, null, 2));
                 } catch (error) {
 
                     console.log(
@@ -415,93 +416,28 @@ then answer:
             // 16. Add Sources
             // =================================================
 
-            if (
-                sources &&
-                sources.length > 0 &&
-                context
-            ) {
-
-                answer +=
-                    "\n\n📚 Sources:\n";
-
+            if (sources && sources.length > 0 && context) {
+                answer += "\n\n📚 Sources:\n";
                 const uniqueSources = [];
-
-                for (
-                    const source
-                    of sources
-                ) {
-
-                    const sourceText =
-                        `• ${source.fileName} (Chunk ${source.chunk})`;
-
-                    if (
-                        !uniqueSources.includes(
-                            sourceText
-                        )
-                    ) {
-
-                        uniqueSources.push(
-                            sourceText
-                        );
+                for (const source of sources) {
+                    const sourceText = `• ${source.fileName} (Chunk ${source.chunk})`;
+                    if (!uniqueSources.includes(sourceText)) {
+                        uniqueSources.push(sourceText);
                     }
                 }
-
-                answer +=
-                    uniqueSources.join(
-                        "\n"
-                    );
+                answer += uniqueSources.join("\n");
             }
-
-
-            // =================================================
-            // 17. Save Assistant Response
-            // =================================================
-
-            await this.memory.addMessage(
-                userId,
-                "assistant",
-                answer
-            );
-
-
-            console.log(
-                "✅ Assistant Response Saved"
-            );
-
-
-            // =================================================
-            // 18. Return Answer
-            // =================================================
-
+            await this.memory.addMessage(userId, "assistant", answer);
+            console.log("✅ Assistant Response Saved");
             return answer;
-
-
         } catch (error) {
-
-            console.log(
-                "❌ Agent Error:",
-                error.message
-            );
-
-            const fallback =
-                "Sorry, I'm unable to process your request right now. Please try again in a moment.";
-
+            console.log("❌ Agent Error:", error.message);
+            const fallback = "Sorry, I'm unable to process your request right now. Please try again in a moment.";
             try {
-
-                await this.memory.addMessage(
-                    userId,
-                    "assistant",
-                    fallback
-                );
-
+                await this.memory.addMessage(userId, "assistant", fallback);
             } catch (saveError) {
-
-                console.log(
-                    "❌ Error saving fallback response:",
-                    saveError.message
-                );
+                console.log("❌ Error saving fallback response:", saveError.message);
             }
-
             return fallback;
         }
     }
@@ -511,48 +447,18 @@ then answer:
     // GENERATE SQL FROM DATABASE SCHEMA
     // =========================================================
 
-    async generateSQLFromSchema(
-        message,
-        userId,
-        schema
-    ) {
-
+    async generateSQLFromSchema(message, userId, schema) {
         try {
-
-            if (
-                !schema ||
-                !Array.isArray(schema) ||
-                schema.length === 0
-            ) {
-
-                console.log(
-                    "❌ No database schema available."
-                );
-
+            if (!schema || !Array.isArray(schema) || schema.length === 0) {
+                console.log("❌ No database schema available.");
                 return null;
             }
-
-
-            const schemaText =
-                schema
-                    .map(table => {
-
-                        const columns =
-                            (table.columns || [])
-                                .map(
-                                    column =>
-                                        `${column.COLUMN_NAME} ${column.DATA_TYPE}`
-                                )
-                                .join(", ");
-
-                        return `TABLE ${table.table} (${columns})`;
-
-                    })
-                    .join("\n");
-
-
+            const schemaText = schema.map(table => {
+                const columns = (table.columns || []).map(column => `${column.COLUMN_NAME} ${column.DATA_TYPE}`).join(", ");
+                return `TABLE ${table.table} (${columns})`;
+            })
+                .join("\n");
             const sqlPrompt = `
-
 You are a SQL query generator.
 
 User question:
@@ -601,54 +507,16 @@ SELECT COUNT(*) AS total FROM messages WHERE user_id = '${userId}'
 
 
             // Remove markdown SQL fences
-            sql =
-                sql.replace(
-                    /^```sql\s*/i,
-                    ""
-                );
-
-            sql =
-                sql.replace(
-                    /^```\s*/i,
-                    ""
-                );
-
-            sql =
-                sql.replace(
-                    /```$/i,
-                    ""
-                );
-
-
-            sql =
-                sql.trim();
-
-
-            console.log(
-                "🧠 Generated SQL:",
-                sql
-            );
-
-
-            // =================================================
-            // Safety Check
-            // =================================================
-
-            if (
-                !sql ||
-                !sql.toLowerCase().startsWith(
-                    "select"
-                )
-            ) {
-
-                console.log(
-                    "❌ Generated SQL is not a SELECT query."
-                );
-
+            sql = sql.replace(/^```sql\s*/i,
+                "");
+            sql = sql.replace(/^```\s*/i, "");
+            sql = sql.replace(/```$/i, "");
+            sql = sql.trim();
+            console.log("🧠 Generated SQL:", sql);
+            if (!sql || !sql.toLowerCase().startsWith("select")) {
+                console.log("❌ Generated SQL is not a SELECT query.");
                 return null;
             }
-
-
             // Block dangerous SQL
             const blockedKeywords = [
                 "insert",
@@ -661,129 +529,50 @@ SELECT COUNT(*) AS total FROM messages WHERE user_id = '${userId}'
                 "grant",
                 "revoke"
             ];
-
-
             const lowerSql = sql.toLowerCase();
             for (const keyword of blockedKeywords) {
                 const regex = new RegExp(`\\b${keyword}\\b`, "i");
                 if (regex.test(sql)) {
-                    console.log(
-                        `❌ Dangerous SQL keyword detected: ${keyword}`
-                    );
+                    console.log(`❌ Dangerous SQL keyword detected: ${keyword}`);
                     return null;
                 }
             }
-
-
             // Never allow password column
-            if (
-                /\bpassword\b/i.test(sql)
-            ) {
-
-                console.log(
-                    "❌ Sensitive password column detected."
-                );
-
+            if (/\bpassword\b/i.test(sql)) {
+                console.log("❌ Sensitive password column detected.");
                 return null;
             }
-
-
             return sql;
-
         } catch (error) {
-
-            console.log(
-                "❌ SQL Generation Error:",
-                error.message
-            );
-
+            console.log("❌ SQL Generation Error:", error.message);
             return null;
         }
     }
 
-
-    // =========================================================
-    // PARSE PLANNER JSON
-    // =========================================================
-
     parsePlannerResponse(response) {
-
-        if (
-            !response ||
-            typeof response !== "string"
-        ) {
-
+        if (!response || typeof response !== "string") {
             return {
                 steps: []
             };
         }
-
-
-        let cleaned =
-            response.trim();
-
-
+        let cleaned = response.trim();
         // Remove markdown ```json
-        cleaned =
-            cleaned.replace(
-                /^```json\s*/i,
-                ""
-            );
-
-
+        cleaned = cleaned.replace(/^```json\s*/i, "");
         // Remove markdown ```
-        cleaned =
-            cleaned.replace(
-                /```$/i,
-                ""
-            );
-
-
-        cleaned =
-            cleaned.trim();
-
-
+        cleaned = cleaned.replace(/```$/i, "");
+        cleaned = cleaned.trim();
         // Find JSON object if model added extra text
-        const firstBrace =
-            cleaned.indexOf("{");
-
-        const lastBrace =
-            cleaned.lastIndexOf("}");
-
-
-        if (
-            firstBrace !== -1 &&
-            lastBrace !== -1 &&
-            lastBrace > firstBrace
-        ) {
-
-            cleaned =
-                cleaned.substring(
-                    firstBrace,
-                    lastBrace + 1
-                );
+        const firstBrace = cleaned.indexOf("{");
+        const lastBrace = cleaned.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            cleaned = cleaned.substring(firstBrace, lastBrace + 1);
         }
-
-
-        const parsed =
-            JSON.parse(
-                cleaned
-            );
-
-
-        if (
-            !parsed ||
-            !Array.isArray(
-                parsed.steps
-            )
-        ) {
-
+        const parsed = JSON.parse(cleaned);
+        if (!parsed || !Array.isArray(parsed.steps)) {
             return {
                 steps: []
             };
         }
-
-
         return parsed;
     }
 }

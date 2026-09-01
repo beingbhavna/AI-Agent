@@ -54,7 +54,7 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
                 {
                     userId: req.body.userId || "bhavna",
                     fileName: req.file.originalname,
-                    chunk: i,
+                    chunk: i + 1,
                     uploadedAt: new Date().toISOString()
                 }
             );

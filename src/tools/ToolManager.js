@@ -8,15 +8,30 @@ import DocumentSearchTool from "./DocumentSearchTool.js";
 export default class ToolManager {
 
     constructor() {
-        this.tools = [new CalculatorTool(), new WeatherTool(), new DatabaseTool(), new WebSearchTool(), new SQLTool(), new DatabaseSchemaTool(),new DocumentSearchTool()];
+        this.tools = [new CalculatorTool(), new WeatherTool(), new DatabaseTool(), new WebSearchTool(), new SQLTool(), new DatabaseSchemaTool(), new DocumentSearchTool()];
     }
 
     getDefinitions() {
-        return this.tools.map(tool => tool.getDefinition());
+        return this.tools.map((tool, index) => {
+            console.log(
+                `🔧 Tool ${index + 1}:`,
+                tool?.constructor?.name,
+                "| getDefinition:",
+                typeof tool?.getDefinition
+            );
+
+            if (typeof tool?.getDefinition !== "function") {
+                throw new Error(
+                    `Tool ${tool?.constructor?.name || "Unknown"} does not have getDefinition()`
+                );
+            }
+
+            return tool.getDefinition();
+        });
     }
 
     getTool(name) {
-        return this.tools.find( tool =>tool.getDefinition().name === name);
+        return this.tools.find(tool => tool.getDefinition().name === name);
     }
 
 }

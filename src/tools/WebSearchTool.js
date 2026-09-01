@@ -5,10 +5,19 @@ export default class WebSearchTool {
     getDefinition() {
         return {
             name: "web_search",
-            description: "Searches the web for recent information."
+            description: "Searches the web for recent information.",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        description: "The search query to send to the web search engine."
+                    }
+                },
+                required: ["query"]
+            }
         };
     }
-
     async execute(query) {
 
         try {

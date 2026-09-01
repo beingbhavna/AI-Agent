@@ -5,40 +5,86 @@ export default class ChromaService {
     constructor() {
 
         this.client = new ChromaClient({
-            path: "http://localhost:8000"
+            host: "localhost",
+            port: 8000,
+            ssl: false
         });
 
         this.collection = null;
     }
 
+
+    // =========================================================
+    // INITIALIZE COLLECTION
+    // =========================================================
+
     async init() {
 
         if (this.collection) {
-            return;
+            return this.collection;
         }
 
         try {
 
-            this.collection = await this.client.getOrCreateCollection({
-                name: "documents",
-                embeddingFunction: null
-            });
+            console.log("🔌 Connecting to ChromaDB...");
+            console.log("🌐 Chroma URL: http://localhost:8000");
+
+            this.collection =
+                await this.client.getOrCreateCollection({
+                    name: "documents",
+                    embeddingFunction: null
+                });
 
             console.log("✅ Chroma Collection Ready");
 
+            return this.collection;
+
         } catch (error) {
 
-            console.error("❌ Chroma Connection Failed");
-            console.error(error.message);
+            console.error(
+                "❌ Chroma Connection Failed:",
+                error.message
+            );
+
             throw error;
-
         }
-
     }
 
-    async addDocument(id, embedding, text, metadata) {
+
+    // =========================================================
+    // ADD DOCUMENT
+    // =========================================================
+
+    async addDocument(
+        id,
+        embedding,
+        text,
+        metadata
+    ) {
 
         await this.init();
+
+        if (!id) {
+            throw new Error("Document ID is required");
+        }
+
+        if (!embedding || !Array.isArray(embedding)) {
+            throw new Error("Valid embedding is required");
+        }
+
+        if (!text) {
+            throw new Error("Document text is required");
+        }
+
+        if (!metadata) {
+            metadata = {};
+        }
+
+        console.log("📥 Adding document to Chroma:");
+        console.log("   ID:", id);
+        console.log("   User:", metadata.userId);
+        console.log("   File:", metadata.fileName);
+        console.log("   Chunk:", metadata.chunk);
 
         await this.collection.add({
 
@@ -52,30 +98,88 @@ export default class ChromaService {
 
         });
 
+        console.log("✅ Document chunk inserted");
     }
 
-    async search(embedding, userId, limit = 5) {
+
+    // =========================================================
+    // SEARCH DOCUMENT
+    // =========================================================
+
+    async search(
+        embedding,
+        userId,
+        limit = 5
+    ) {
 
         await this.init();
 
-        return await this.collection.query({
+        if (!embedding || !Array.isArray(embedding)) {
+            throw new Error("Valid query embedding is required");
+        }
 
-            queryEmbeddings: [embedding],
+        if (!userId) {
+            throw new Error("userId is required for document search");
+        }
 
-            nResults: limit,
+        console.log("🔎 Chroma Search");
+        console.log("👤 User:", userId);
+        console.log("🔢 Limit:", limit);
 
-            where: {
-                userId: userId
-            },
+        const result =
+            await this.collection.query({
 
-            include: [
-                "documents",
-                "metadatas",
-                "distances"
-            ]
+                queryEmbeddings: [embedding],
 
-        });
+                nResults: limit,
 
+                where: {
+                    userId: userId
+                },
+
+                include: [
+                    "documents",
+                    "metadatas",
+                    "distances"
+                ]
+            });
+
+        console.log(
+            "📦 Chroma Search Result:",
+            JSON.stringify(
+                result,
+                null,
+                2
+            )
+        );
+
+        return result;
     }
 
+
+    // =========================================================
+    // GET COLLECTION COUNT
+    // =========================================================
+
+    async count() {
+
+        await this.init();
+
+        return await this.collection.count();
+    }
+
+
+    // =========================================================
+    // GET ALL DOCUMENTS
+    // =========================================================
+
+    async getAll() {
+        await this.init();
+        return await this.collection.get({
+            include: [
+                "documents",
+                "metadatas"
+            ]
+        });
+    }
 }
