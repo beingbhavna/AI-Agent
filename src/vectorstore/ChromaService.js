@@ -109,6 +109,7 @@ export default class ChromaService {
     async search(
         embedding,
         userId,
+        documentId = null,
         limit = 5
     ) {
 

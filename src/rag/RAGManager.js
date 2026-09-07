@@ -247,99 +247,237 @@ export default class RAGManager {
     constructor() {
         this.embedding = new EmbeddingService();
         this.vector = new ChromaService();
+
+        // Tune this later based on your embedding model
+        this.maxDistance = 0.70;
+
+        // Retrieve more candidates before filtering
+        this.topK = 10;
+
+        // Final number of chunks sent to LLM
+        this.finalK = 5;
     }
 
     async init() {
-
         await this.vector.init();
 
         console.log("📚 RAG Manager Initialized");
     }
 
-    async search(userId, query) {
+    async search(userId, query,documentId = null) {
 
-        console.log("🔎 RAG Search:", query);
-        console.log("👤 RAG User:", userId);
+        try {
 
-        // ---------------------------------------
-        // 1. Create query embedding
-        // ---------------------------------------
+            // ---------------------------------------
+            // 1. Validate input
+            // ---------------------------------------
 
-        const embedding =
-            await this.embedding.create(query);
+            if (!userId) {
+                throw new Error("userId is required for RAG search");
+            }
 
-        console.log("🧠 Query Embedding Created");
+            if (!query || !query.trim()) {
+                throw new Error("Search query is required");
+            }
 
-        // ---------------------------------------
-        // 2. Search Chroma
-        // ---------------------------------------
+            query = query.trim();
 
-        const result =
-            await this.vector.search(
-                embedding,
-                userId,
-                5
+            console.log("🔎 RAG Search:", query);
+            console.log("👤 RAG User:", userId);
+
+            // ---------------------------------------
+            // 2. Create query embedding
+            // ---------------------------------------
+
+            const embedding =
+                await this.embedding.create(query);
+
+            console.log("🧠 Query Embedding Created");
+
+            // ---------------------------------------
+            // 3. Search Chroma
+            // ---------------------------------------
+
+            const result = await this.vector.search(
+                    embedding,
+                    userId,
+                    documentId,
+                    this.topK
+                );
+
+            // ---------------------------------------
+            // 4. Check results
+            // ---------------------------------------
+
+            if (
+                !result ||
+                !result.documents ||
+                !result.documents[0] ||
+                result.documents[0].length === 0
+            ) {
+
+                console.log("📭 No documents found");
+
+                return {
+                    context: "",
+                    sources: [],
+                    results: []
+                };
+            }
+
+            // ---------------------------------------
+            // 5. Extract Chroma results
+            // ---------------------------------------
+
+            const documents =
+                result.documents[0] || [];
+
+            const metadatas =
+                result.metadatas?.[0] || [];
+
+            const distances =
+                result.distances?.[0] || [];
+
+            // ---------------------------------------
+            // 6. Convert results
+            // ---------------------------------------
+
+            let searchResults =
+                documents.map((document, index) => {
+
+                    return {
+                        text: document,
+
+                        metadata:
+                            metadatas[index] || {},
+
+                        distance:
+                            distances[index] ?? null
+                    };
+
+                });
+
+            console.log(
+                `📚 Retrieved ${searchResults.length} candidates`
             );
 
-        // ---------------------------------------
-        // 3. Check results
-        // ---------------------------------------
+            // ---------------------------------------
+            // 7. Distance filtering
+            // ---------------------------------------
 
-        if (
-            !result.documents ||
-            !result.documents[0] ||
-            result.documents[0].length === 0
-        ) {
+            searchResults =
+                searchResults.filter(item => {
 
-            console.log("📭 No relevant documents found");
+                    if (item.distance === null) {
+                        return true;
+                    }
 
-            return {
-                context: "",
-                sources: []
-            };
-        }
+                    return item.distance <= this.maxDistance;
+                });
 
-        // ---------------------------------------
-        // 4. Extract results
-        // ---------------------------------------
+            console.log(
+                `🎯 Relevant chunks after filtering: ${searchResults.length}`
+            );
 
-        const documents =
-            result.documents[0];
+            // ---------------------------------------
+            // 8. Limit final results
+            // ---------------------------------------
 
-        const metadatas =
-            result.metadatas?.[0] || [];
+            searchResults =
+                searchResults.slice(0, this.finalK);
 
-        // ---------------------------------------
-        // 5. Build context
-        // ---------------------------------------
+            // ---------------------------------------
+            // 9. No relevant result
+            // ---------------------------------------
 
-        let context = "";
+            if (searchResults.length === 0) {
 
-        for (let i = 0; i < documents.length; i++) {
+                console.log(
+                    "📭 No sufficiently relevant documents found"
+                );
 
-            const document =
-                documents[i];
+                return {
+                    context: "",
+                    sources: [],
+                    results: []
+                };
+            }
 
-            const metadata =
-                metadatas[i] || {};
+            // ---------------------------------------
+            // 10. Build context
+            // ---------------------------------------
 
-            context += `
+            let context = "";
+
+            for (const item of searchResults) {
+
+                const metadata =
+                    item.metadata || {};
+
+                context += `
 Source: ${metadata.fileName || "Unknown"}
-Chunk: ${metadata.chunk ?? i + 1}
+Chunk: ${metadata.chunkIndex ?? metadata.chunk ?? "Unknown"}
 
-${document}
+${item.text}
 
 ----------------------------------------
 `;
+            }
+
+            // ---------------------------------------
+            // 11. Build sources
+            // ---------------------------------------
+
+            const sources =
+                searchResults.map(item => ({
+                    fileName:
+                        item.metadata?.fileName || "Unknown",
+
+                    chunkIndex:
+                        item.metadata?.chunkIndex ??
+                        item.metadata?.chunk ??
+                        null,
+
+                    distance:
+                        item.distance
+                }));
+
+            console.log(
+                `📚 Final RAG Documents: ${searchResults.length}`
+            );
+
+            // ---------------------------------------
+            // 12. Return
+            // ---------------------------------------
+
+            return {
+
+                context,
+
+                sources,
+
+                results: searchResults
+
+            };
+
+        } catch (error) {
+
+            console.error(
+                "❌ RAG Search Error:",
+                error.message
+            );
+
+            return {
+
+                context: "",
+
+                sources: [],
+
+                results: [],
+
+                error: error.message
+
+            };
         }
-
-        console.log(
-            `📚 RAG Documents Found: ${documents.length}`
-        );
-
-        return {
-            context,
-            sources: metadatas
-        };
     }
 }

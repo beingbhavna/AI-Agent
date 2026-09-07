@@ -19,7 +19,8 @@ export default class DocumentIngestionService {
         console.log("📁 File:", filePath);
         console.log("📄 File Name:", fileName);
         console.log("👤 User:", userId);
-
+        const documentId = randomUUID();
+        console.log("📄 Document ID:", documentId);
         try {
 
             // ==========================================
@@ -76,63 +77,35 @@ export default class DocumentIngestionService {
             // ==========================================
             // 4. Create embeddings and store chunks
             // ==========================================
-
+            const documentId = randomUUID();
             for (let i = 0; i < chunks.length; i++) {
-
                 const chunk = chunks[i];
-
-                console.log(
-                    `🧠 Creating embedding ${i + 1}/${chunks.length}`
-                );
-
-                const embedding =
-                    await this.embedder.create(chunk);
-
-                if (
-                    !embedding ||
-                    !Array.isArray(embedding) ||
-                    embedding.length === 0
-                ) {
-
-                    throw new Error(
-                        `Invalid embedding generated for chunk ${i + 1}`
-                    );
-
+                console.log(`🧠 Creating embedding ${i + 1}/${chunks.length}`);
+                const embedding = await this.embedder.create(chunk);
+                if ( !embedding ||!Array.isArray(embedding) || embedding.length === 0) {
+                    throw new Error(`Invalid embedding generated for chunk ${i + 1}`);
                 }
-
-                console.log(
-                    `📏 Embedding dimensions: ${embedding.length}`
-                );
-
+                console.log(`📏 Embedding dimensions: ${embedding.length}`);
 
                 // ======================================
                 // Store in Chroma
                 // ======================================
 
                 await this.chroma.addDocument(
-
                     randomUUID(),
-
                     embedding,
-
                     chunk,
-
                     {
-                        userId: userId,
-
-                        fileName: fileName,
-
-                        chunk: i + 1,
-
-                        uploadedAt:
-                            new Date().toISOString()
+                        userId,
+                        documentId,
+                        fileName,
+                        chunkIndex: i,
+                        // pageNumber,
+                        documentType: "pdf",
+                        uploadedAt: new Date().toISOString()
                     }
-
                 );
-
-                console.log(
-                    `💾 Stored chunk ${i + 1}/${chunks.length}`
-                );
+                console.log(`💾 Stored chunk ${i + 1}/${chunks.length}`);
             }
 
 
