@@ -46,19 +46,13 @@ Chunk: ${chunk}
 
 ${result.text}`
             );
-
-
             sources.push({
-
                 fileName,
-
                 chunk,
-
                 distance:
                     result.distance ?? null
             });
         }
-
 
         return {
 

@@ -302,19 +302,12 @@ export default class DocumentSearchTool {
             console.log(
                 `📚 Documents Found: ${result.sources?.length || 0}`
             );
-
             return {
-
                 success: true,
-
                 query,
-
-                context:
-                    result.context || "",
-
-                sources:
-                    result.sources || []
-
+                context: result.context || "",
+                sources: result.sources || [],
+                results: result.results || []
             };
 
         }

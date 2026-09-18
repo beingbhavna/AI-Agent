@@ -144,43 +144,25 @@ export default class AgentExecutor {
                 input
             );
 
-            console.log(
-                `👤 User:`,
-                userId
-            );
-
-
+            console.log(`👤 User:`, userId);
             let result;
-
-
             try {
-
-                result =
-                    await this.toolExecutor.execute(
-                        step.tool,
-                        input,
-                        userId
-                    );
-
+                result = await this.toolExecutor.execute(
+                    step.tool,
+                    input,
+                    userId
+                );
 
                 // ======================================
                 // Tool Logging
                 // ======================================
-
                 logTool(
                     step.tool,
                     input,
                     result
                 );
-
             } catch (error) {
-
-                console.error(
-                    `❌ Tool Error (${step.tool}):`,
-                    error.message
-                );
-
-
+                console.error(`❌ Tool Error (${step.tool}):`, error.message);
                 result = {
                     success: false,
                     error: error.message
@@ -191,126 +173,67 @@ export default class AgentExecutor {
             // ==========================================
             // Store Tool Result
             // ==========================================
-
             results.push({
-
                 step: step.step ?? i + 1,
-
                 tool: step.tool,
-
                 input,
-
                 result
             });
         }
 
-
         // =====================================================
         // RAG PROCESSING
         // =====================================================
-
-        console.log(
-            "🧠 Starting RAG processing..."
-        );
-
+        console.log("🧠 Starting RAG processing...");
 
         // ==========================================
         // Collect document_search results
         // ==========================================
-
         const documentResults = results
             .filter(item => {
-
                 return (
                     item.tool === "document_search" &&
                     item.result?.success === true
                 );
-
             })
-            .flatMap(item => {
-
-                return item.result?.documents || [];
-
-            });
-
-
-        console.log(
-            `📚 RAG Documents Found: ${documentResults.length}`
-        );
-
-
+            .map(item => ({
+                context: item.result.context || "",
+                sources: item.result.sources || []
+            }));
+        console.log(`📚 RAG Documents Found: ${documentResults.length}`);
         // ==========================================
         // Build RAG Context
         // ==========================================
-
         let ragContext = "";
-
-
+        let ragSources = [];
         if (documentResults.length > 0) {
-
-            ragContext =
-                this.ragContextBuilder.build({
-                    documents: documentResults
-                });
-
+            const ragResult = this.ragContextBuilder.build(documentResults);
+            ragContext = ragResult.context;
+            ragSources = ragResult.sources;
         }
-
-
-        console.log(
-            "📖 RAG Context:"
-        );
-
-        console.log(
-            ragContext || "No relevant document context found."
-        );
-
-
+        console.log("📖 RAG Context:");
+        console.log(ragContext || "No relevant document context found.");
         // ==========================================
         // Build Final Prompt
         // ==========================================
-
         let finalPrompt = "";
-
-
         if (ragContext) {
-
-            finalPrompt =
-                this.ragPromptBuilder.build(
-                    originalQuestion || "",
-                    ragContext
-                );
-
+            finalPrompt = this.ragPromptBuilder.build(originalQuestion || "", ragContext);
         } else {
-
             // No document context available.
             // Still create a prompt so the caller
             // knows that document information was
             // not found.
-
-            finalPrompt = this.ragPromptBuilder.build(
-                    originalQuestion || "",
-                    ""
-                );
+            finalPrompt = this.ragPromptBuilder.build(originalQuestion || "", "");
         }
-
-
-        console.log(
-            "📝 Final RAG Prompt Created"
-        );
-
-
+        console.log("📝 Final RAG Prompt Created");
         // ==========================================
         // Return Execution + RAG Result
         // ==========================================
-
         return {
-
             results,
-
             ragContext,
-
             finalPrompt
-
         };
     }
 }
